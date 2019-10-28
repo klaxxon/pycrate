@@ -1,4 +1,4 @@
-Adding GoGenerate to generate Go code.
+Adding GoGenerate to generate Go code. Work in progress.....
 
 
 What is pycrate
