@@ -36,6 +36,7 @@ from .asnobj    import *
 from .asnobj    import _path_stack, _path_pop
 from .extractor import get_objs
 from .generator import PycrateGenerator, JSONDepGraphGenerator
+from .gogenerator import GoGenerator
 
 #------------------------------------------------------------------------------#
 # ASN.1 files handling

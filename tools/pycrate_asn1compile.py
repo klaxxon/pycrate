@@ -33,7 +33,7 @@ import sys
 import argparse
 
 from pycrate_asn1c.asnproc import compile_text, compile_spec, compile_all, \
-     generate_modules, PycrateGenerator, JSONDepGraphGenerator, ASN_SPECS
+     generate_modules, PycrateGenerator, GoGenerator, JSONDepGraphGenerator,  ASN_SPECS
 
 
 # inputs:
@@ -89,9 +89,11 @@ def main():
     #parser.add_argument('-s', dest='spec', type=str,
     #                    help='provide a specification shortname, instead of ASN.1 input file(s)')
     parser.add_argument('-o', dest='output', type=str, default='out',
-                        help='compiled output Python (and json) source file(s)')
+                        help='compiled output Python or Go (and json) source file(s)')
     parser.add_argument('-j', dest='json', action='store_true',
                         help='output a json file with information on ASN.1 objects dependency')
+    parser.add_argument('-go', dest='go', action='store_true',
+                        help='output a Go language')
     parser.add_argument('-fautotags', action='store_true',
                         help='force AUTOMATIC TAGS for all ASN.1 modules')
     parser.add_argument('-fextimpl', action='store_true',
@@ -110,7 +112,10 @@ def main():
         ckw['verifwarn'] = True
     #
     try:
-        ofd = open(args.output + '.py', 'w')
+        if args.go:
+          ofd = open(args.output + '.go', 'w')
+        else:
+          ofd = open(args.output + '.py', 'w')
     except:
         print('%s, args error: unable to create output file %s' % (sys.argv[0], args.output))
         return 0
@@ -176,7 +181,10 @@ def main():
         print('%s, args error: missing ASN.1 input(s) or specification name' % sys.argv[0])
         return 0
     
-    generate_modules(PycrateGenerator, args.output + '.py')
+    if args.go:
+      generate_modules(GoGenerator, args.output + '.go')
+    else:
+      generate_modules(PycrateGenerator, args.output + '.py')
     if args.json:
         generate_modules(JSONDepGraphGenerator, args.output + '.json')
     return 0

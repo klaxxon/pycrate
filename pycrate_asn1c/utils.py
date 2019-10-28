@@ -424,6 +424,11 @@ def match_typeref(text):
 def strip(text=''):
     return text.strip()
 
+def name_to_golang(n):
+    if iskeyword(n):
+        # n is a Python keyword
+        n += '_'
+    return n.replace('-', '_').replace(' ', '_')
 
 def name_to_defin(n):
     if iskeyword(n):
@@ -817,3 +822,22 @@ def class_syntax_gidbl(gidbl, gidcur):
         if gid == gidcur[:len(gid)]:
             return True
     return False
+
+
+def qrepr(s):
+     s = s.replace('@', '@@')
+     s = s.replace('"', '+!+')
+     s = s.replace("'", '-!-')
+     s = repr(s)[1:-1]
+     s = s.replace('-!-', "'")
+     s = s.replace('+!+', r'\"')
+     s = s.replace('@@', '@')
+     return '"%s"' % s
+
+def goarr(arr):
+    s = ""
+    for a in arr:
+        if s != "":
+          s += ","
+        s += qrepr(a)
+    return s
