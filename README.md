@@ -1,3 +1,6 @@
+Adding GoGenerate to generate Go code.
+
+
 What is pycrate
 ===============
 
