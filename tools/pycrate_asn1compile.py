@@ -113,7 +113,7 @@ def main():
     #
     try:
         if args.go:
-          ofd = open(args.output + '.go', 'w')
+          ofd = open("gocode/src/" + args.output + '.go', 'w')
         else:
           ofd = open(args.output + '.py', 'w')
     except:
@@ -182,7 +182,7 @@ def main():
         return 0
     
     if args.go:
-      generate_modules(GoGenerator, args.output + '.go')
+      generate_modules(GoGenerator, "gocode/src/" + args.output + '.go')
     else:
       generate_modules(PycrateGenerator, args.output + '.py')
     if args.json:
