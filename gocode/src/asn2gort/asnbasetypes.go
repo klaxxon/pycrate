@@ -5,12 +5,6 @@ import (
 	"strings"
 )
 
-// AsnI Is needed by all ASN usable structs
-type AsnI interface {
-	PERDecode(*PERDecoder) error
-	PEREncode(*PEREncoder) error
-}
-
 // ListElement ??
 type ListElement interface {
 	SetSize(int)

@@ -363,11 +363,13 @@ class GoGenerator(_Generator):
         self.wdl('import (')
         self.wdl('//\t"fmt"')
         self.wdl('\t. "asn2gort"')   
+        self.wdl('\t"reflect"')   
         self.wdl(')')
         self.wdl('')
         #
         modlist = []
         #
+
         for mod_name in [mn for mn in GLOBAL.MOD if mn[:1] != '_']:
             self._mod_name = mod_name
             Mod = GLOBAL.MOD[mod_name]
@@ -375,6 +377,7 @@ class GoGenerator(_Generator):
             #
             self.wil('func (p *{0})Init() {{'.format(pymodname))
             self.wdl('type {0} struct {{'.format(pymodname))
+            self.wdl('\tAsnI')
             #
             #self.wrl('_name_  = {0!r}'.format(Mod['_name_']))
             #self.wrl('_oid_   = {0!r}'.format(Mod['_oid_']))
@@ -397,8 +400,16 @@ class GoGenerator(_Generator):
             #self.wrl(']')
             modlist.append(pymodname)
             #
-            self.wdl('}//400\n')
-            self.wil('}//401\n')
+            self.wdl('}\n')
+            self.wil('}\n\n')
+            self.wil('func (a *{0})Decode(p *PERDecoder) error {{\n\treturn a.Decode(p)\n}}\n\n'.format(pymodname))
+            self.wil('func (a *{0})getField(s string) interface{{}} {{\n\tv := reflect.ValueOf(*a)\n\ti := v.FieldByName(s)\n\tif i.CanInterface() {{\n\t\treturn i.Interface()\n\t}}\n\treturn nil\n}}\n\n'.format(pymodname))
+            self.wil('func (a *{0})getObj() []string {{\n\treturn a._obj_\n}}\n\n'.format(pymodname))
+            self.wil('func (a *{0})getType() []string {{\n\treturn a._type_\n}}\n\n'.format(pymodname))
+            self.wil('func (a *{0})getSet() []string {{\n\treturn a._set_\n}}\n\n'.format(pymodname))
+            self.wil('func (a *{0})getVal() []string {{\n\treturn a._val_\n}}\n\n'.format(pymodname))
+            self.wil('func (a *{0})getClass() []string {{\n\treturn a._class_\n}}\n\n'.format(pymodname))
+            self.wil('func (a *{0})getParam() []string {{\n\treturn a._param_\n}}\n\n'.format(pymodname))
 
         #
         # create the _IMPL_ class if required
@@ -424,8 +435,22 @@ class GoGenerator(_Generator):
             self.wrl('}//424')
             self.wrl('')
         #
-        #self.wrl('init_modules(' + ', '.join(modlist) + ')')        
-        #self.wil('}//428')
+        p = pkg[::-1].index("/")
+        p = len(pkg) - p
+        pmod = pkg[p:]
+        self.wil('type _' + pmod + ' struct {')
+        for x in modlist:
+          self.wil('\t{0} *{0}'.format(x))        
+        self.wil('}')
+        self.wil('\nvar ' + pmod + " _" + pmod)
+    
+        self.wil('\n\nfunc init() {')
+        self.wil('\t' + pmod + " = _" + pmod + "{}")
+        for x in modlist:
+          self.wil('\t{0}.{1} = &{1}{{}}'.format(pmod,x))
+          self.wil('\t{0}.{1}.Init()'.format(pmod,x))
+          self.wil('\tInitModule("{0}",{1}.{0},{1}.{0})'.format(x,pmod))        
+        self.wil('}')
 
     def gen_mod(self, Mod):
         obj_names = [obj_name for obj_name in Mod.keys() if obj_name[0:1] != '_']
@@ -627,6 +652,7 @@ class GoGenerator(_Generator):
         # named integer values
         if Obj._cont:
             # Cont is an ASN1Dict with {str: int}
+            self.wil('p.{0}.Cont = InterfaceMap{{Data:make(map[string]interface{{}})}}'.format(Obj._pyname))
             for a in Obj._cont.items():
                   r = extract_charstr(Obj._pyname)[0]
                   self.wil('p.{0}.Cont.Add({1},{2})'.format(r, qrepr(a[0]), a[1]))
@@ -642,14 +668,16 @@ class GoGenerator(_Generator):
     def gen_type_enum(self, Obj):
         # enum content
         if Obj._cont:
+            self.wil('p.{0}.Cont = InterfaceMap{{Data:make(map[string]interface{{}})}}'.format(Obj._pyname))
             for a in Obj._cont.items():
                   r = extract_charstr(a[0])[0]
                   self.wil('p.{0}.Cont.Add("{1}",{2})'.format(Obj._pyname, r,a[1]))
             #self.wil('{0}._cont = ASN1Dict({1!r})'.format(Obj._pyname, list(Obj._cont.items())))
             if Obj._ext is None:
-                #self.wil('{0}.Ext = None'.format(Obj._pyname))
+                self.wil('p.{0}.ExtFlag = false'.format(Obj._pyname))
                 pass
             else:
+                self.wil('p.{0}.ExtFlag = true'.format(Obj._pyname))
                 if len(Obj._ext) > 0:
                   s = 'p.{0}.Ext = []string{{'.format(Obj._pyname)
                   for x in Obj._ext:
@@ -663,6 +691,7 @@ class GoGenerator(_Generator):
         # content: named bit offsets
         if Obj._cont:
             # Cont is an ASN1Dict with {str: int}
+            self.wil('p.{0}.Cont = InterfaceMap{{Data:make(map[string]interface{{}})}}'.format(Obj._pyname))
             for a in Obj._cont.items():
                   r = extract_charstr(a[0])[0]
                   self.wil('p.{0}.Cont.Add("{1}",{2})'.format(Obj._pyname, r))
@@ -712,6 +741,7 @@ class GoGenerator(_Generator):
                 Cont._pyname = '_{0}_{1}'.format(Obj._pyname, name_to_defin(Cont._name))
                 self.gen_type(Cont, compts=True)
                 links[name] = Cont._pyname
+            self.wil('p.{0}.Cont = InterfaceSet{{Data:make([]interface{{}},0)}}'.format(Obj._pyname))
             # now link all of them in an ASN1Dict into the Obj content
             for a in links:
                   self.wil('p.{0}.Cont.Add({1},p.{2})'.format(Obj._pyname, qrepr(a), links[a]))
@@ -721,9 +751,10 @@ class GoGenerator(_Generator):
             #self.wil('    ])')
             # extension
             if Obj._ext is None:
-                #self.wil('{0}.Ext = None'.format(Obj._pyname))
+                self.wil('p.{0}.ExtFlag = false'.format(Obj._pyname))
                 pass
             else:
+                self.wil('p.{0}.ExtFlag = true'.format(Obj._pyname))
                 if len(Obj._ext) > 0:
                   s = 'p.{0}.Ext = []string{{'.format(Obj._pyname)
                   for x in Obj._ext:
@@ -745,14 +776,15 @@ class GoGenerator(_Generator):
                 self.gen_type(Cont, compts=True)
                 links[name] = Cont._pyname
             # now link all of them in an ASN1Dict into the Obj content
-            self.wil('p.{0}.A_cont = InterfaceMap{{}}'.format(Obj._pyname))
+            self.wil('p.{0}.Cont = InterfaceSet{{Data:make([]interface{{}},0)}}'.format(Obj._pyname))
             for name in links:
-                self.wil('p.{0}.A_cont.Add("{1}", p.{2})'.format(Obj._pyname, name, links[name]))
+                self.wil('p.{0}.Cont.Add("{1}", p.{2})'.format(Obj._pyname, name, links[name]))
             # extension
             if Obj._ext is None:
-                #self.wil('{0}.Ext = None'.format(Obj._pyname))
+                self.wil('p.{0}.ExtFlag = false'.format(Obj._pyname))
                 pass
             else:
+                self.wil('p.{0}.ExtFlag = true'.format(Obj._pyname))
                 if len(Obj._ext) > 0:
                   s = 'p.{0}.Ext = []string{{'.format(Obj._pyname)
                   for x in Obj._ext:
@@ -771,8 +803,8 @@ class GoGenerator(_Generator):
             Cont._pyname = '_{0}_{1}'.format(Obj._pyname, name_to_defin(Cont._name))
             self.gen_type(Cont)
             # now link it to the Obj content
-            self.wil('p.{0}.A_cont = InterfaceMap{{}}'.format(Obj._pyname))
-            self.wil('p.{0}.A_cont.Add("", p.{1})'.format(Obj._pyname, Cont._pyname))
+            self.wil('p.{0}.Cont = InterfaceSet{{Data:make([]interface{{}},1)}}'.format(Obj._pyname))
+            self.wil('p.{0}.Cont.Add("", p.{1})'.format(Obj._pyname, Cont._pyname))
         # value constraint
         self.gen_const_val(Obj)
         # size constraint
@@ -790,6 +822,7 @@ class GoGenerator(_Generator):
                 links[name] = Cont._pyname
             # now link all of them in an ASN1Dict into the Obj content
             #self.wil('{0}._cont = ASN1Dict(['.format(Obj._pyname))
+            self.wil('p.{0}.Cont = InterfaceMap{{Data:make(map[string]interface{{}})}}'.format(Obj._pyname))
             for name in links:
                 self.wil('p.{0}.Cont.Add({1}, p.{2})'.format(Obj._pyname, qrepr(name), links[name]))
     

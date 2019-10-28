@@ -1,10 +1,35 @@
 package asn2gort
 
+type AsnI interface {
+	getObj() []string
+	getType() []string
+	getSet() []string
+	getVal() []string
+	getClass() []string
+	getParam() []string
+	getField(s string) interface{}
+	Decode(*PERDecoder) error
+	//Encode(*PERDecoder) error
+}
+
 type InterfaceMap struct {
+	Data map[string]interface{}
 }
 
 func (a *InterfaceMap) Add(s string, i interface{}) {
+	a.Data[s] = i
+}
 
+type InterfaceSet struct {
+	Data []interface{}
+}
+
+func (a *InterfaceSet) Add(s string, i interface{}) {
+	a.Data = append(a.Data, i)
+}
+
+func (a *InterfaceSet) Get(i int) interface{} {
+	return a.Data[i]
 }
 
 type AsnENUM struct {
@@ -18,6 +43,7 @@ type AsnENUM struct {
 	A_const_tab    interface{}
 	A_const_tab_at interface{}
 	A_const_tab_id string
+	ExtFlag        bool
 	Ext            []string
 }
 
@@ -26,12 +52,30 @@ type AsnCHOICE struct {
 	Mode           string
 	Tag            string
 	Opt            bool
-	Cont           InterfaceMap
+	Cont           InterfaceSet
 	Typeref        interface{}
 	A_const_tab    interface{}
 	A_const_tab_at interface{}
 	A_const_tab_id string
+	ExtFlag        bool
 	Ext            []string
+}
+
+func (a *AsnCHOICE) Decode(p *PERDecoder) error {
+	var ext byte
+	a.Ext = nil
+	if a.ExtFlag {
+		if err := p.GetBit(&ext); err != nil {
+			return err
+		}
+	}
+	breq := bitsNeeded(uint64(len(a.Cont.Data)))
+	var idx uint64
+	if err := p.GetUintVal(breq, &idx); err != nil {
+		return err
+	}
+	x := a.Cont.Get(int(idx))
+	return x.(AsnI).Decode(p)
 }
 
 type AsnCLASS struct {
@@ -63,7 +107,13 @@ type AsnSEQ struct {
 	Opt     bool
 	Param   bool
 	Typeref ASN1RefType
-	A_cont  InterfaceMap
+	Cont    InterfaceSet
+	ExtFlag bool
+	Ext     []string
+}
+
+func (a AsnSEQ) Decode(p *PERDecoder) error {
+	return nil
 }
 
 type AsnSEQ_OF struct {
@@ -73,7 +123,7 @@ type AsnSEQ_OF struct {
 	Opt        bool
 	Typeref    interface{}
 	Param      interface{}
-	A_cont     InterfaceMap
+	Cont       InterfaceSet
 	A_const_sz interface{}
 }
 
