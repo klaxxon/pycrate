@@ -363,7 +363,7 @@ class GoGenerator(_Generator):
         self.wdl('import (')
         self.wdl('//\t"fmt"')
         self.wdl('\t. "asn2gort"')   
-        self.wdl('\t"reflect"')   
+        self.wdl('//\t"reflect"')   
         self.wdl(')')
         self.wdl('')
         #
@@ -377,15 +377,17 @@ class GoGenerator(_Generator):
             #
             self.wil('func (p *{0})Init() {{'.format(pymodname))
             self.wdl('type {0} struct {{'.format(pymodname))
-            self.wdl('\tAsnI')
+            self.wdl('\tAsn\n')
             #
             #self.wrl('_name_  = {0!r}'.format(Mod['_name_']))
             #self.wrl('_oid_   = {0!r}'.format(Mod['_oid_']))
             #self.wrl('_tag_   = {0}'.format(_tag_lut[Mod['_tag_']]))
             #self.wrl('')
             for attr in ('_obj_', '_type_', '_set_', '_val_', '_class_', '_param_'):
-                self.wdl('{0} []string'.format(attr))
-                self.wil('p.{0} = []string{{'.format(attr))
+                #self.wdl('{0} []string'.format(attr))
+                name = attr[1:]
+                name = name[0].upper() + name[1:]
+                self.wil('p.{0} = []string{{'.format(name))
                 for name in Mod[attr]:
                     self.wil('"{0}",'.format(name))
                 self.wil('}//388')
@@ -402,14 +404,16 @@ class GoGenerator(_Generator):
             #
             self.wdl('}\n')
             self.wil('}\n\n')
-            self.wil('func (a *{0})Decode(p *PERDecoder) error {{\n\treturn a.Decode(p)\n}}\n\n'.format(pymodname))
-            self.wil('func (a *{0})getField(s string) interface{{}} {{\n\tv := reflect.ValueOf(*a)\n\ti := v.FieldByName(s)\n\tif i.CanInterface() {{\n\t\treturn i.Interface()\n\t}}\n\treturn nil\n}}\n\n'.format(pymodname))
-            self.wil('func (a *{0})getObj() []string {{\n\treturn a._obj_\n}}\n\n'.format(pymodname))
-            self.wil('func (a *{0})getType() []string {{\n\treturn a._type_\n}}\n\n'.format(pymodname))
-            self.wil('func (a *{0})getSet() []string {{\n\treturn a._set_\n}}\n\n'.format(pymodname))
-            self.wil('func (a *{0})getVal() []string {{\n\treturn a._val_\n}}\n\n'.format(pymodname))
-            self.wil('func (a *{0})getClass() []string {{\n\treturn a._class_\n}}\n\n'.format(pymodname))
-            self.wil('func (a *{0})getParam() []string {{\n\treturn a._param_\n}}\n\n'.format(pymodname))
+            
+            #self.wil('func (a *{0})Decode(p *PERDecoder) error {{\n\treturn a.Decode(p)\n}}\n\n'.format(pymodname))
+            #self.wil('func (a *{0})getField(s string) interface{{}} {{\n\tv := reflect.ValueOf(*a)\n\ti := v.FieldByName(s)\n\tif i.CanInterface() {{\n\t\treturn i.Interface()\n\t}}\n\treturn nil\n}}\n\n'.format(pymodname))
+            #self.wil('func (a *{0})getObj() []string {{\n\treturn a._obj_\n}}\n\n'.format(pymodname))
+            #self.wil('func (a *{0})getType() []string {{\n\treturn a._type_\n}}\n\n'.format(pymodname))
+            #self.wil('func (a *{0})getSet() []string {{\n\treturn a._set_\n}}\n\n'.format(pymodname))
+            #self.wil('func (a *{0})getVal() []string {{\n\treturn a._val_\n}}\n\n'.format(pymodname))
+            #self.wil('func (a *{0})getClass() []string {{\n\treturn a._class_\n}}\n\n'.format(pymodname))
+            #self.wil('func (a *{0})getParam() []string {{\n\treturn a._param_\n}}\n\n'.format(pymodname))
+            
 
         #
         # create the _IMPL_ class if required
@@ -449,7 +453,7 @@ class GoGenerator(_Generator):
         for x in modlist:
           self.wil('\t{0}.{1} = &{1}{{}}'.format(pmod,x))
           self.wil('\t{0}.{1}.Init()'.format(pmod,x))
-          self.wil('\tInitModule("{0}",{1}.{0},{1}.{0})'.format(x,pmod))        
+          self.wil('\tInitModule("{0}",{1}.{0})'.format(x,pmod))        
         self.wil('}')
 
     def gen_mod(self, Mod):
@@ -638,7 +642,7 @@ class GoGenerator(_Generator):
                 attr.append('Uniq:true')
             if Obj._group is not None:
                 attr.append('Group:{0!r}'.format(Obj._group))
-        return ', '.join(attr)
+        return 'Asn:Asn{' + ', '.join(attr) + '}'
     
     #--------------------------------------------------------------------------#
     # specific types
@@ -741,7 +745,7 @@ class GoGenerator(_Generator):
                 Cont._pyname = '_{0}_{1}'.format(Obj._pyname, name_to_defin(Cont._name))
                 self.gen_type(Cont, compts=True)
                 links[name] = Cont._pyname
-            self.wil('p.{0}.Cont = InterfaceSet{{Data:make([]interface{{}},0)}}'.format(Obj._pyname))
+            self.wil('p.{0}.Cont = InterfaceMap{{Data:make(map[string]interface{{}})}}'.format(Obj._pyname))
             # now link all of them in an ASN1Dict into the Obj content
             for a in links:
                   self.wil('p.{0}.Cont.Add({1},p.{2})'.format(Obj._pyname, qrepr(a), links[a]))
@@ -776,7 +780,7 @@ class GoGenerator(_Generator):
                 self.gen_type(Cont, compts=True)
                 links[name] = Cont._pyname
             # now link all of them in an ASN1Dict into the Obj content
-            self.wil('p.{0}.Cont = InterfaceSet{{Data:make([]interface{{}},0)}}'.format(Obj._pyname))
+            self.wil('p.{0}.Cont = InterfaceMap{{Data:make(map[string]interface{{}})}}'.format(Obj._pyname))
             for name in links:
                 self.wil('p.{0}.Cont.Add("{1}", p.{2})'.format(Obj._pyname, name, links[name]))
             # extension
@@ -803,8 +807,8 @@ class GoGenerator(_Generator):
             Cont._pyname = '_{0}_{1}'.format(Obj._pyname, name_to_defin(Cont._name))
             self.gen_type(Cont)
             # now link it to the Obj content
-            self.wil('p.{0}.Cont = InterfaceSet{{Data:make([]interface{{}},1)}}'.format(Obj._pyname))
-            self.wil('p.{0}.Cont.Add("", p.{1})'.format(Obj._pyname, Cont._pyname))
+            self.wil('p.{0}.Cont = InterfaceMap{{Data:make(map[string]interface{{}},1)}}'.format(Obj._pyname))
+            self.wil('p.{0}.Cont.Add({1}, p.{2})'.format(Obj._pyname, qrepr(Cont._pyname),Cont._pyname))
         # value constraint
         self.gen_const_val(Obj)
         # size constraint

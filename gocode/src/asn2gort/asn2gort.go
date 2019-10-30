@@ -1,5 +1,29 @@
 package asn2gort
 
+type Asn struct {
+	AsnI
+	Mode       string
+	Name       string
+	Tag        string
+	Opt        bool
+	Uniq       bool
+	Default    string
+	Param      bool
+	ExtFlag    bool
+	Ext        []string
+	Typeref    interface{}
+	Cont       InterfaceMap
+	_root      []string
+	_const_ind ASN1Set
+	_parent    AsnI
+	Obj_       []string
+	Type_      []string
+	Set_       []string
+	Val_       []string
+	Class_     []string
+	Param_     []string
+}
+
 type AsnI interface {
 	getObj() []string
 	getType() []string
@@ -8,8 +32,33 @@ type AsnI interface {
 	getClass() []string
 	getParam() []string
 	getField(s string) interface{}
+	getMode() string
+	getObjects() []interface{}
+	getCont() *InterfaceMap
+	setParent(AsnI)
+	getParent() AsnI
 	Decode(*PERDecoder) error
 	//Encode(*PERDecoder) error
+}
+
+func (a *Asn) getObj() []string {
+	return a.Obj_
+}
+
+func (a *Asn) setParent(aparent AsnI) {
+	a._parent = aparent
+}
+
+func (a *Asn) getParent() AsnI {
+	return a._parent
+}
+
+func (a *Asn) getCont() *InterfaceMap {
+	return &a.Cont
+}
+
+func (a *Asn) getMode() string {
+	return a.Mode
 }
 
 type InterfaceMap struct {
@@ -20,6 +69,17 @@ func (a *InterfaceMap) Add(s string, i interface{}) {
 	a.Data[s] = i
 }
 
+func (a *InterfaceMap) Get(i int) interface{} {
+	for _, b := range a.Data {
+		if i == 0 {
+			return b
+		}
+		i--
+	}
+	return nil
+}
+
+/*
 type InterfaceSet struct {
 	Data []interface{}
 }
@@ -31,34 +91,20 @@ func (a *InterfaceSet) Add(s string, i interface{}) {
 func (a *InterfaceSet) Get(i int) interface{} {
 	return a.Data[i]
 }
+*/
 
 type AsnENUM struct {
-	Name           string
-	Mode           string
-	Tag            string
-	Opt            bool
-	Cont           InterfaceMap
-	Typeref        interface{}
-	Default        string
+	Asn
 	A_const_tab    interface{}
 	A_const_tab_at interface{}
 	A_const_tab_id string
-	ExtFlag        bool
-	Ext            []string
 }
 
 type AsnCHOICE struct {
-	Name           string
-	Mode           string
-	Tag            string
-	Opt            bool
-	Cont           InterfaceSet
-	Typeref        interface{}
+	Asn
 	A_const_tab    interface{}
 	A_const_tab_at interface{}
 	A_const_tab_id string
-	ExtFlag        bool
-	Ext            []string
 }
 
 func (a *AsnCHOICE) Decode(p *PERDecoder) error {
@@ -74,42 +120,26 @@ func (a *AsnCHOICE) Decode(p *PERDecoder) error {
 	if err := p.GetUintVal(breq, &idx); err != nil {
 		return err
 	}
-	x := a.Cont.Get(int(idx))
+	x := a.getCont().Get(int(idx))
 	return x.(AsnI).Decode(p)
 }
 
 type AsnCLASS struct {
-	Name        string
-	Mode        string
-	Tag         string
-	Cont        InterfaceMap
-	Typeref     interface{}
+	Asn
 	Val         ASN1Set
 	A_const_tab interface{}
 	A_val       interface{}
 }
 
 type AsnOPEN struct {
-	Name           string
-	Mode           string
-	Tag            string
-	Opt            bool
-	Typeref        interface{}
+	Asn
 	A_const_tab    interface{}
 	A_const_tab_at interface{}
 	A_const_tab_id string
 }
 
 type AsnSEQ struct {
-	Name    string
-	Mode    string
-	Tag     string
-	Opt     bool
-	Param   bool
-	Typeref ASN1RefType
-	Cont    InterfaceSet
-	ExtFlag bool
-	Ext     []string
+	Asn
 }
 
 func (a AsnSEQ) Decode(p *PERDecoder) error {
@@ -117,57 +147,31 @@ func (a AsnSEQ) Decode(p *PERDecoder) error {
 }
 
 type AsnSEQ_OF struct {
-	Name       string
-	Mode       string
-	Tag        string
-	Opt        bool
-	Typeref    interface{}
-	Param      interface{}
-	Cont       InterfaceSet
+	Asn
 	A_const_sz interface{}
 }
 
 type AsnOCT_STR struct {
-	Name       string
-	Mode       string
-	Tag        string
-	Opt        bool
-	Typeref    interface{}
+	Asn
 	A_const_sz interface{}
 }
 
 type AsnBIT_STR struct {
-	Name       string
-	Mode       string
-	Tag        string
-	Opt        bool
-	Typeref    interface{}
+	Asn
 	A_const_sz interface{}
 }
 
 type AsnSTR_PRINT struct {
-	Name       string
-	Mode       string
-	Tag        string
-	Typeref    interface{}
+	Asn
 	A_const_sz interface{}
-	Cont       InterfaceMap
 }
 
 type AsnNULL struct {
-	Name string
-	Mode string
-	Tag  string
+	Asn
 }
 
 type AsnINT struct {
-	Name           string
-	Mode           string
-	Tag            string
-	Typeref        interface{}
-	Uniq           bool
-	Opt            bool
-	Cont           InterfaceMap
+	Asn
 	_val           int64
 	A_val          interface{}
 	A_const_val    ASN1Set
@@ -182,14 +186,12 @@ type ASN1RangeInt struct {
 }
 
 type AsnOID struct {
-	Name string
-	Mode string
-	Tag  string
+	Asn
 }
 
 type ASN1Ref struct {
-	Name string
-	Obj  interface{}
+	Mod string
+	Obj interface{}
 }
 
 type ASN1Set struct {
