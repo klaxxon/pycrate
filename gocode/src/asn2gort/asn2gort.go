@@ -1,5 +1,7 @@
 package asn2gort
 
+import "reflect"
+
 type Asn struct {
 	AsnI
 	Mode       string
@@ -15,7 +17,7 @@ type Asn struct {
 	Cont       InterfaceMap
 	_root      []string
 	_const_ind ASN1Set
-	_parent    AsnI
+	_parent    *Asn
 	Obj_       []string
 	Type_      []string
 	Set_       []string
@@ -35,21 +37,50 @@ type AsnI interface {
 	getMode() string
 	getObjects() []interface{}
 	getCont() *InterfaceMap
-	setParent(AsnI)
-	getParent() AsnI
+	setParent(*Asn)
+	getParent() *Asn
 	Decode(*PERDecoder) error
 	//Encode(*PERDecoder) error
+}
+
+func (a *Asn) getField(s string) interface{} {
+	v := reflect.ValueOf(a)
+	i := v.FieldByName(s)
+	if i.CanInterface() {
+		return i.Interface()
+	}
+	return nil
 }
 
 func (a *Asn) getObj() []string {
 	return a.Obj_
 }
 
-func (a *Asn) setParent(aparent AsnI) {
+func (a *Asn) getType() []string {
+	return a.Type_
+}
+
+func (a *Asn) getSet() []string {
+	return a.Set_
+}
+
+func (a *Asn) getVal() []string {
+	return a.Val_
+}
+
+func (a *Asn) getClass() []string {
+	return a.Class_
+}
+
+func (a *Asn) getParam() []string {
+	return a.Param_
+}
+
+func (a *Asn) setParent(aparent *Asn) {
 	a._parent = aparent
 }
 
-func (a *Asn) getParent() AsnI {
+func (a *Asn) getParent() *Asn {
 	return a._parent
 }
 
@@ -61,15 +92,19 @@ func (a *Asn) getMode() string {
 	return a.Mode
 }
 
-type InterfaceMap struct {
-	Data map[string]interface{}
+type ContentI interface {
+	setParent(*Asn)
 }
 
-func (a *InterfaceMap) Add(s string, i interface{}) {
+type InterfaceMap struct {
+	Data map[string]ContentI
+}
+
+func (a *InterfaceMap) Add(s string, i ContentI) {
 	a.Data[s] = i
 }
 
-func (a *InterfaceMap) Get(i int) interface{} {
+func (a *InterfaceMap) Get(i int) ContentI {
 	for _, b := range a.Data {
 		if i == 0 {
 			return b

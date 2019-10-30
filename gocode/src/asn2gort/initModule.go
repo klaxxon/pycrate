@@ -27,12 +27,14 @@ func InitModule(name string, mod AsnI) {
 		GLOB.Mod[name]["_class_"] = str2int(mod.getClass())
 		GLOB.Mod[name]["_param_"] = str2int(mod.getParam())
 	}
-	for _, o := range mod.getObj() {
-		f := mod.getField(goName(o))
-		if f != nil {
-			GLOB.Mod[name][o] = []interface{}{f}
+	/*
+		for _, o := range mod.getObj() {
+			f := mod.getField(goName(o))
+			if f != nil {
+				GLOB.Mod[name][o] = []interface{}{f}
+			}
 		}
-	}
+	*/
 	//spew.Dump(mod)
 	gen_mod(mod)
 }
@@ -67,7 +69,8 @@ func gen_mod(mod AsnI) {
 					case "AsnCHOICE", "AsnSEQ", "AsnSET", "AsnCLASS":
 						if t == "AsnCHOICE" {
 							asn := i.(AsnCHOICE).Asn
-							mapParents(i.(AsnCHOICE).AsnI)
+							fmt.Println(asn.Name)
+							mapParents(&asn)
 							var ext []string
 							asn._root = make([]string, 0)
 							if asn.ExtFlag {
@@ -104,9 +107,10 @@ func gen_mod(mod AsnI) {
 	*/
 }
 
-func mapParents(asn AsnI) {
-	for _, a := range asn.getCont().Data {
-		a.(AsnI).setParent(asn)
+func mapParents(asn *Asn) {
+	for a, b := range asn.getCont().Data {
+		b.(ContentI).setParent(asn)
+		fmt.Printf("Mapping %s to parent %s\n", a, asn.Name)
 	}
 }
 
