@@ -531,8 +531,8 @@ class GoGenerator(_Generator):
             return
         #
         # 4) initialize the object Python instance
-        self.wdl('{0}\tAsn{1}'.format(Obj._pyname, Obj.__class__.__name__))
-        self.wil('p.{0} = Asn{1}{{{2}}}'.format(Obj._pyname,
+        self.wdl('{0}\t*Asn{1}'.format(Obj._pyname, Obj.__class__.__name__))
+        self.wil('p.{0} = &Asn{1}{{{2}}}'.format(Obj._pyname,
                                          Obj.__class__.__name__,
                                          self._gen_type_init_attr(Obj, compts)))
         #
@@ -656,7 +656,7 @@ class GoGenerator(_Generator):
         # named integer values
         if Obj._cont:
             # Cont is an ASN1Dict with {str: int}
-            self.wil('p.{0}.Cont = InterfaceMap{{Data:make(map[string]interface{{}})}}'.format(Obj._pyname))
+            self.wil('p.{0}.Cont = InterfaceMap{{Data:make(map[string]ContentI)}}'.format(Obj._pyname))
             for a in Obj._cont.items():
                   r = extract_charstr(Obj._pyname)[0]
                   self.wil('p.{0}.Cont.Add({1},{2})'.format(r, qrepr(a[0]), a[1]))
@@ -672,7 +672,7 @@ class GoGenerator(_Generator):
     def gen_type_enum(self, Obj):
         # enum content
         if Obj._cont:
-            self.wil('p.{0}.Cont = InterfaceMap{{Data:make(map[string]interface{{}})}}'.format(Obj._pyname))
+            self.wil('p.{0}.Cont = InterfaceMap{{Data:make(map[string]ContentI)}}'.format(Obj._pyname))
             for a in Obj._cont.items():
                   r = extract_charstr(a[0])[0]
                   self.wil('p.{0}.Cont.Add("{1}",{2})'.format(Obj._pyname, r,a[1]))
@@ -695,7 +695,7 @@ class GoGenerator(_Generator):
         # content: named bit offsets
         if Obj._cont:
             # Cont is an ASN1Dict with {str: int}
-            self.wil('p.{0}.Cont = InterfaceMap{{Data:make(map[string]interface{{}})}}'.format(Obj._pyname))
+            self.wil('p.{0}.Cont = InterfaceMap{{Data:make(map[string]ContentI)}}'.format(Obj._pyname))
             for a in Obj._cont.items():
                   r = extract_charstr(a[0])[0]
                   self.wil('p.{0}.Cont.Add("{1}",{2})'.format(Obj._pyname, r))
@@ -745,7 +745,7 @@ class GoGenerator(_Generator):
                 Cont._pyname = '_{0}_{1}'.format(Obj._pyname, name_to_defin(Cont._name))
                 self.gen_type(Cont, compts=True)
                 links[name] = Cont._pyname
-            self.wil('p.{0}.Cont = InterfaceMap{{Data:make(map[string]interface{{}})}}'.format(Obj._pyname))
+            self.wil('p.{0}.Cont = InterfaceMap{{Data:make(map[string]ContentI)}}'.format(Obj._pyname))
             # now link all of them in an ASN1Dict into the Obj content
             for a in links:
                   self.wil('p.{0}.Cont.Add({1},p.{2})'.format(Obj._pyname, qrepr(a), links[a]))
@@ -780,7 +780,7 @@ class GoGenerator(_Generator):
                 self.gen_type(Cont, compts=True)
                 links[name] = Cont._pyname
             # now link all of them in an ASN1Dict into the Obj content
-            self.wil('p.{0}.Cont = InterfaceMap{{Data:make(map[string]interface{{}})}}'.format(Obj._pyname))
+            self.wil('p.{0}.Cont = InterfaceMap{{Data:make(map[string]ContentI)}}'.format(Obj._pyname))
             for name in links:
                 self.wil('p.{0}.Cont.Add("{1}", p.{2})'.format(Obj._pyname, name, links[name]))
             # extension
@@ -807,7 +807,7 @@ class GoGenerator(_Generator):
             Cont._pyname = '_{0}_{1}'.format(Obj._pyname, name_to_defin(Cont._name))
             self.gen_type(Cont)
             # now link it to the Obj content
-            self.wil('p.{0}.Cont = InterfaceMap{{Data:make(map[string]interface{{}},1)}}'.format(Obj._pyname))
+            self.wil('p.{0}.Cont = InterfaceMap{{Data:make(map[string]ContentI,1)}}'.format(Obj._pyname))
             self.wil('p.{0}.Cont.Add({1}, p.{2})'.format(Obj._pyname, qrepr(Cont._pyname),Cont._pyname))
         # value constraint
         self.gen_const_val(Obj)
@@ -826,7 +826,7 @@ class GoGenerator(_Generator):
                 links[name] = Cont._pyname
             # now link all of them in an ASN1Dict into the Obj content
             #self.wil('{0}._cont = ASN1Dict(['.format(Obj._pyname))
-            self.wil('p.{0}.Cont = InterfaceMap{{Data:make(map[string]interface{{}})}}'.format(Obj._pyname))
+            self.wil('p.{0}.Cont = InterfaceMap{{Data:make(map[string]ContentI)}}'.format(Obj._pyname))
             for name in links:
                 self.wil('p.{0}.Cont.Add({1}, p.{2})'.format(Obj._pyname, qrepr(name), links[name]))
     
