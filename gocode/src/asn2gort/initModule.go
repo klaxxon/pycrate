@@ -76,7 +76,7 @@ func gen_mod(mod AsnI) {
 							if asn.ExtFlag {
 								ext = asn.Ext
 							}
-							for a, _ := range asn.Cont.Data {
+							for a, _ := range asn.Children.Data {
 								if asn.ExtFlag {
 									if inStrArray(ext, a) {
 										break
@@ -108,7 +108,7 @@ func gen_mod(mod AsnI) {
 }
 
 func mapParents(asn *Asn) {
-	for a, b := range asn.getCont().Data {
+	for a, b := range asn.getChildren().Data {
 		b.(ContentI).setParent(asn)
 		fmt.Printf("Mapping %s to parent %s\n", a, asn.Name)
 	}
