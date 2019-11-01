@@ -17,6 +17,7 @@ type Asn struct {
 	Children   InterfaceMap
 	_root      []string
 	_const_ind ASN1Set
+	_parent    *Asn
 	Obj_       []string
 	Type_      []string
 	Set_       []string
@@ -36,8 +37,9 @@ type AsnI interface {
 	getMode() string
 	getObjects() []interface{}
 	getChildren() *InterfaceMap
-	getParent() *Asn
 	Decode(*PERDecoder) error
+	setParent(*Asn)
+	getParent() *Asn
 	//Encode(*PERDecoder) error
 }
 
@@ -82,27 +84,23 @@ func (a *Asn) getMode() string {
 	return a.Mode
 }
 
-type ContentI interface {
-	setParent(*Asn)
+func (c *Asn) setParent(a *Asn) {
+	c._parent = a
 }
 
-type Child struct {
-	Parent *Asn
-}
-
-func (c *Child) setParent(a *Asn) {
-	c.Parent = a
+func (c *Asn) getParent() *Asn {
+	return c._parent
 }
 
 type InterfaceMap struct {
-	Data map[string]ContentI
+	Data map[string]AsnI
 }
 
-func (a *InterfaceMap) Add(s string, i ContentI) {
+func (a *InterfaceMap) Add(s string, i AsnI) {
 	a.Data[s] = i
 }
 
-func (a *InterfaceMap) Get(i int) ContentI {
+func (a *InterfaceMap) Get(i int) AsnI {
 	for _, b := range a.Data {
 		if i == 0 {
 			return b
@@ -112,23 +110,12 @@ func (a *InterfaceMap) Get(i int) ContentI {
 	return nil
 }
 
-/*
-type InterfaceSet struct {
-	Data []interface{}
+type BitsNeeded interface {
+	getBitsNeeded() int
 }
-
-func (a *InterfaceSet) Add(s string, i interface{}) {
-	a.Data = append(a.Data, i)
-}
-
-func (a *InterfaceSet) Get(i int) interface{} {
-	return a.Data[i]
-}
-*/
 
 type AsnENUM struct {
 	Asn
-	Child
 	Val            uint64
 	A_const_tab    interface{}
 	A_const_tab_at interface{}
@@ -137,10 +124,18 @@ type AsnENUM struct {
 
 type AsnCHOICE struct {
 	Asn
-	Child
 	A_const_tab    interface{}
 	A_const_tab_at interface{}
 	A_const_tab_id string
+	_bitsneeded    byte
+}
+
+func (a *AsnCHOICE) getBitsNeeded() byte {
+	return a._bitsneeded
+}
+
+func (a *AsnCHOICE) setBitsNeeded(i byte) {
+	a._bitsneeded = i
 }
 
 func (a *AsnCHOICE) Decode(p *PERDecoder) error {
@@ -157,12 +152,11 @@ func (a *AsnCHOICE) Decode(p *PERDecoder) error {
 		return err
 	}
 	x := a.getChildren().Get(int(idx))
-	return x.(AsnI).Decode(p)
+	return x.Decode(p)
 }
 
 type AsnCLASS struct {
 	Asn
-	Child
 	Val         ASN1Set
 	A_const_tab interface{}
 	A_val       interface{}
@@ -170,7 +164,6 @@ type AsnCLASS struct {
 
 type AsnOPEN struct {
 	Asn
-	Child
 	A_const_tab    interface{}
 	A_const_tab_at interface{}
 	A_const_tab_id string
@@ -178,7 +171,6 @@ type AsnOPEN struct {
 
 type AsnSEQ struct {
 	Asn
-	Child
 }
 
 func (a AsnSEQ) Decode(p *PERDecoder) error {
@@ -187,36 +179,30 @@ func (a AsnSEQ) Decode(p *PERDecoder) error {
 
 type AsnSEQ_OF struct {
 	Asn
-	Child
 	A_const_sz interface{}
 }
 
 type AsnOCT_STR struct {
 	Asn
-	Child
 	A_const_sz interface{}
 }
 
 type AsnBIT_STR struct {
 	Asn
-	Child
 	A_const_sz interface{}
 }
 
 type AsnSTR_PRINT struct {
 	Asn
-	Child
 	A_const_sz interface{}
 }
 
 type AsnNULL struct {
 	Asn
-	Child
 }
 
 type AsnINT struct {
 	Asn
-	Child
 	Val            int64
 	A_val          interface{}
 	A_const_val    ASN1Set
@@ -232,7 +218,6 @@ type ASN1RangeInt struct {
 
 type AsnOID struct {
 	Asn
-	Child
 }
 
 type ASN1Ref struct {

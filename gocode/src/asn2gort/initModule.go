@@ -68,7 +68,8 @@ func gen_mod(mod AsnI) {
 					switch t {
 					case "AsnCHOICE", "AsnSEQ", "AsnSET", "AsnCLASS":
 						if t == "AsnCHOICE" {
-							asn := i.(AsnCHOICE).Asn
+							x := i.(*AsnCHOICE)
+							asn := x.Asn
 							fmt.Println(asn.Name)
 							mapParents(&asn)
 							var ext []string
@@ -84,6 +85,7 @@ func gen_mod(mod AsnI) {
 								}
 								asn._root = append(asn._root, a)
 							}
+							x.setBitsNeeded(byte(bitsNeeded(uint64(len(asn.Children.Data)))))
 							if !asn.ExtFlag {
 								//asn._const_ind = ASN1Set{RR: []ASN1Ref{ASN1RangeInt{LL: 0, UL: len(ty.Asn._root) - 1}}}
 							} else if len(asn.Ext) == 0 {
@@ -109,7 +111,7 @@ func gen_mod(mod AsnI) {
 
 func mapParents(asn *Asn) {
 	for a, b := range asn.getChildren().Data {
-		b.(ContentI).setParent(asn)
+		b.setParent(asn)
 		fmt.Printf("Mapping %s to parent %s\n", a, asn.Name)
 	}
 }

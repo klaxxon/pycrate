@@ -111,16 +111,14 @@ def main():
     if args.fverifwarn:
         ckw['verifwarn'] = True
     #
-    try:
-        if args.go:
-          ofd = open("gocode/src/" + args.output + '.go', 'w')
-        else:
+    if not args.go:
+      try:
           ofd = open(args.output + '.py', 'w')
-    except:
-        print('%s, args error: unable to create output file %s' % (sys.argv[0], args.output))
-        return 0
-    else:
-        ofd.close()
+      except:
+          print('%s, args error: unable to create output file %s' % (sys.argv[0], args.output))
+          return 0
+      else:
+          ofd.close()
     
     #if args.spec:
     #    if args.spec not in ASN_SPECS:

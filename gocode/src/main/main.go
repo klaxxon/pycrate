@@ -1,11 +1,13 @@
 package main
 
 import (
+	"S1AP"
 	"asn2gort"
 )
 
 func main() {
 	d := asn2gort.NewPERDecoderFromString("0011003F000004003B00080000F11000070800003C400A0380617269632D654E42004000190300030000F1100002C000F11000028000F11000024000F1100089000100", false)
-	x := s1ap.S1AP_PDU_Descriptions.S1AP_PDU
+	//x := s1ap.S1AP_PDU_Descriptions.S1AP_PDU
+	x := S1AP.BaseS1AP.S1AP_PDU_Descriptions.S1AP_PDU
 	x.Decode(d)
 }
