@@ -40,56 +40,58 @@ func InitModule(name string, mod AsnI) {
 }
 
 func gen_mod(mod AsnI) {
-	v := reflect.ValueOf(mod)
-	vnum := v.Elem().NumField()
-	for a := 0; a < vnum; a++ {
-		ve := v.Elem().Field(a)
-		for ve.Kind() == reflect.Ptr {
-			if ve.IsNil() {
-				break
-			}
-			//addr := ve.Pointer()
-			ve = ve.Elem()
-			if ve.Kind() == reflect.Interface {
+	for Obj := range mod.getAll() {
+		v := reflect.ValueOf(Obj)
+		vnum := v.Elem().NumField()
+		for a := 0; a < vnum; a++ {
+			ve := v.Elem().Field(a)
+			for ve.Kind() == reflect.Ptr {
 				if ve.IsNil() {
 					break
 				}
+				//addr := ve.Pointer()
 				ve = ve.Elem()
+				if ve.Kind() == reflect.Interface {
+					if ve.IsNil() {
+						break
+					}
+					ve = ve.Elem()
+				}
 			}
-		}
-		if ve.CanInterface() {
-			var i interface{}
-			t := ve.Type().String()
-			fmt.Println(t)
-			if len(t) > 10 && t[0:9] == "asn2gort." && t != "asn2gort.Asn" {
-				t = t[9:]
-				if ve.IsValid() {
-					i = ve.Interface()
-					switch t {
-					case "AsnCHOICE", "AsnSEQ", "AsnSET", "AsnCLASS":
-						if t == "AsnCHOICE" {
-							x := i.(*AsnCHOICE)
-							asn := x.Asn
-							fmt.Println(asn.Name)
-							mapParents(&asn)
-							var ext []string
-							asn._root = make([]string, 0)
-							if asn.ExtFlag {
-								ext = asn.Ext
-							}
-							for a, _ := range asn.Children.Data {
+			if ve.CanInterface() {
+				var i interface{}
+				t := ve.Type().String()
+				fmt.Println(t)
+				if len(t) > 10 && t[0:9] == "asn2gort." && t != "asn2gort.Asn" {
+					t = t[9:]
+					if ve.IsValid() {
+						i = ve.Interface()
+						switch t {
+						case "AsnCHOICE", "AsnSEQ", "AsnSET", "AsnCLASS":
+							if t == "AsnCHOICE" {
+								x := i.(*AsnCHOICE)
+								asn := x.Asn
+								fmt.Println(asn.Name)
+								mapParents(&asn)
+								var ext []string
+								asn._root = make([]string, 0)
 								if asn.ExtFlag {
-									if inStrArray(ext, a) {
-										break
-									}
+									ext = asn.Ext
 								}
-								asn._root = append(asn._root, a)
-							}
-							x.setBitsNeeded(byte(bitsNeeded(uint64(len(asn.Children.Data)))))
-							if !asn.ExtFlag {
-								//asn._const_ind = ASN1Set{RR: []ASN1Ref{ASN1RangeInt{LL: 0, UL: len(ty.Asn._root) - 1}}}
-							} else if len(asn.Ext) == 0 {
-								//asn._const_ind = ASN1Set{RR: []ASN1RangeInt{ASN1RangeInt{ll: 0, ul: len(ty.Asn._root) - 1}, EV: make([]ASN1RangeInt, 0)}}
+								for a, _ := range asn.Children.Data {
+									if asn.ExtFlag {
+										if inStrArray(ext, a) {
+											break
+										}
+									}
+									asn._root = append(asn._root, a)
+								}
+								x.setBitsNeeded(byte(bitsNeeded(uint64(len(asn.Children.Data)))))
+								if !asn.ExtFlag {
+									//asn._const_ind = ASN1Set{RR: []ASN1Ref{ASN1RangeInt{LL: 0, UL: len(ty.Asn._root) - 1}}}
+								} else if len(asn.Ext) == 0 {
+									//asn._const_ind = ASN1Set{RR: []ASN1RangeInt{ASN1RangeInt{ll: 0, ul: len(ty.Asn._root) - 1}, EV: make([]ASN1RangeInt, 0)}}
+								}
 							}
 						}
 					}

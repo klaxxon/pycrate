@@ -14,6 +14,7 @@ type Asn struct {
 	ExtFlag    bool
 	Ext        []string
 	Typeref    interface{}
+	All        []interface{}
 	Children   InterfaceMap
 	_root      []string
 	_const_ind ASN1Set
@@ -40,6 +41,7 @@ type AsnI interface {
 	Decode(*PERDecoder) error
 	setParent(*Asn)
 	getParent() *Asn
+	getAll() []interface{}
 	//Encode(*PERDecoder) error
 }
 
@@ -50,6 +52,10 @@ func (a *Asn) getField(s string) interface{} {
 		return i.Interface()
 	}
 	return nil
+}
+
+func (a *Asn) getAll() []interface{} {
+	return a.All
 }
 
 func (a *Asn) getObj() []string {
@@ -174,6 +180,13 @@ type AsnSEQ struct {
 }
 
 func (a AsnSEQ) Decode(p *PERDecoder) error {
+	var ext byte
+	a.Ext = nil
+	if a.ExtFlag {
+		if err := p.GetBit(&ext); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
