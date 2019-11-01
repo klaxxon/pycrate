@@ -395,13 +395,13 @@ class GoGenerator(_Generator):
             self.wdl('type {0} struct {{'.format(pymodname))
             self.wdl('\tAsn\n')
             #
-            self.wil('_name := {0}'.format(qrepr(Mod['_name_'])))
-            str = '_oid_ := []int{'
+            self.wil('p.Name = {0}'.format(qrepr(Mod['_name_'])))
+            str = 'p.Oid = []int{'
             for x in Mod['_oid_']:
                 str += '{0}, '.format(x)
             str += '}'
             self.wil(str)
-            self.wil('_tag := "{0}"'.format(_tag_lut[Mod['_tag_']]))
+            self.wil('p.Tag = "{0}"'.format(_tag_lut[Mod['_tag_']]))
             for attr in ('_obj_', '_type_', '_set_', '_val_', '_class_', '_param_'):
                 #self.wdl('{0} []string'.format(attr))
                 name = attr[1:]
@@ -415,9 +415,9 @@ class GoGenerator(_Generator):
             self._all_ = []
             self._allobj_ = {}
             self.gen_mod(GLOBAL.MOD[mod_name])
-            str = 'Asn.All = []interface{}{'
+            str = 'p.All = []interface{}{'
             for pyobjname in self._all_:
-                str += '{0},'.format(pyobjname)
+                str += 'p.{0},'.format(pyobjname)
             str += '}'
             self.wil(str)
             modlist.append(pymodname)

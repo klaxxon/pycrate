@@ -4,27 +4,30 @@ import "reflect"
 
 type Asn struct {
 	AsnI
-	Mode       string
-	Name       string
-	Tag        string
-	Opt        bool
-	Uniq       bool
-	Default    string
-	Param      bool
-	ExtFlag    bool
-	Ext        []string
-	Typeref    interface{}
-	All        []interface{}
-	Children   InterfaceMap
-	_root      []string
-	_const_ind ASN1Set
-	_parent    *Asn
-	Obj_       []string
-	Type_      []string
-	Set_       []string
-	Val_       []string
-	Class_     []string
-	Param_     []string
+	Mode        string
+	Name        string
+	Tag         string
+	Type        string
+	Oid         []int
+	Opt         bool
+	Uniq        bool
+	Default     string
+	Param       bool
+	ExtFlag     bool
+	Ext         []string
+	Typeref     interface{}
+	All         []interface{}
+	Children    InterfaceMap
+	_root       []string
+	_const_ind  ASN1Set
+	_parent     *Asn
+	_bitsNeeded byte
+	Obj_        []string
+	Type_       []string
+	Set_        []string
+	Val_        []string
+	Class_      []string
+	Param_      []string
 }
 
 type AsnI interface {
@@ -116,10 +119,6 @@ func (a *InterfaceMap) Get(i int) AsnI {
 	return nil
 }
 
-type BitsNeeded interface {
-	getBitsNeeded() int
-}
-
 type AsnENUM struct {
 	Asn
 	Val            uint64
@@ -133,15 +132,6 @@ type AsnCHOICE struct {
 	A_const_tab    interface{}
 	A_const_tab_at interface{}
 	A_const_tab_id string
-	_bitsneeded    byte
-}
-
-func (a *AsnCHOICE) getBitsNeeded() byte {
-	return a._bitsneeded
-}
-
-func (a *AsnCHOICE) setBitsNeeded(i byte) {
-	a._bitsneeded = i
 }
 
 func (a *AsnCHOICE) Decode(p *PERDecoder) error {
