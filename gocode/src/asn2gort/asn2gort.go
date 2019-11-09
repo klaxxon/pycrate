@@ -17,7 +17,7 @@ type Asn struct {
 	Ext         []string
 	Typeref     interface{}
 	All         []interface{}
-	Children    InterfaceMap
+	Children    *InterfaceMap
 	_root       []string
 	_const_ind  ASN1Set
 	_parent     *Asn
@@ -86,7 +86,7 @@ func (a *Asn) getParam() []string {
 }
 
 func (a *Asn) getChildren() *InterfaceMap {
-	return &a.Children
+	return a.Children
 }
 
 func (a *Asn) getMode() string {
@@ -101,30 +101,16 @@ func (c *Asn) getParent() *Asn {
 	return c._parent
 }
 
-type InterfaceMap struct {
-	Data map[string]AsnI
-}
-
-func (a *InterfaceMap) Add(s string, i AsnI) {
-	a.Data[s] = i
-}
-
-func (a *InterfaceMap) Get(i int) AsnI {
-	for _, b := range a.Data {
-		if i == 0 {
-			return b
-		}
-		i--
-	}
-	return nil
-}
-
 type AsnENUM struct {
 	Asn
 	Val            uint64
 	A_const_tab    interface{}
 	A_const_tab_at interface{}
 	A_const_tab_id string
+}
+
+func NewAsnENUM(val uint64) *AsnENUM {
+	return &AsnENUM{Val: val}
 }
 
 type AsnCHOICE struct {
@@ -148,7 +134,7 @@ func (a *AsnCHOICE) Decode(p *PERDecoder) error {
 		return err
 	}
 	x := a.getChildren().Get(int(idx))
-	return x.Decode(p)
+	return x.(AsnI).Decode(p)
 }
 
 type AsnCLASS struct {
@@ -214,40 +200,8 @@ type AsnINT struct {
 	A_const_tab_id string
 }
 
-type ASN1RangeInt struct {
-	Lb uint64
-	Ub uint64
-}
-
 type AsnOID struct {
 	Asn
-}
-
-type ASN1Ref struct {
-	Mod string
-	Obj interface{}
-}
-
-type ASN1Set struct {
-	RR []ASN1Ref
-	RV []ASN1Ref
-	EV []ASN1Ref
-	ER []ASN1Ref
-}
-
-type ASN1RefType struct {
-	Mod string
-	Obj string
-}
-
-type AsnReference struct {
-	Mod string
-	Obj string
-}
-
-type ASN1RefClassField struct {
-	Ref AsnReference
-	Obj string
 }
 
 type ASN1Dict struct {

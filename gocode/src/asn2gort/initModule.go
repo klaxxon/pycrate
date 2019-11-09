@@ -91,7 +91,7 @@ func gen_mod(mod AsnI) {
 
 func mapParents(asn *Asn) {
 	for a, b := range asn.getChildren().Data {
-		b.setParent(asn)
+		b.(AsnI).setParent(asn)
 		fmt.Printf("Mapping %s to parent %s\n", a, asn.Name)
 	}
 }
