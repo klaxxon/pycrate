@@ -272,7 +272,7 @@ def value_to_defin(v, Obj=None, Gen=None, ind=None):
 def range_to_defin(r, Obj=None):
     # ASN1Range only applied to TYPE_INT, TYPE_REAL and TYPE_STR_*
     if Obj.TYPE == TYPE_INT:
-        return 'ASN1RangeInt{{Lb:{0}, Ub:{1}}}'\
+        return 'NewASN1RangeInt({0}, {1})'\
                .format(value_to_defin(r.lb, Obj), value_to_defin(r.ub, Obj))
     elif Obj.TYPE == TYPE_REAL:
         return 'ASN1RangeReal{{Lb:{0}, Ub:{1}, Lb_incl:{2!r}, Ub_incl:{3!r}}}'\
@@ -285,45 +285,45 @@ def range_to_defin(r, Obj=None):
 def set_to_defin(S, Obj=None, Gen=None):
     # ASN1Set(rv, rr, ev, er)
     # ind: value index, required especially for distinguishing sets of CLASS values
-    s = 'ASN1Set{RV:[]ASN1Ref{'
+    s = 'ASN1Set{RV:[]*ASN1Ref{'
     ind = 0
     # root part
     for v in S._rv:
         #rv.append(value_to_defin(v, Obj, Gen, ind))
         for y in value_to_defin(v, Obj, Gen, ind):
           if len(y)==1:
-            s += 'ASN1Ref{{ Mod:"", Obj:{0} }},'.format(y)
+            s += 'NewASN1Ref({0}),'.format(y)
           elif len(y)==2:
-            s += 'ASN1Ref{{Mod:{0}, Obj:{1}}},'.format(y[0],y[1])
+            s += 'NewASN1RefWithMod({0}, {1}),'.format(y[0],y[1])
           else:
-            s += 'ASN1Ref{{Mod:"", Obj:{0} }},'.format(y[1:len(y)-1])
+            s += 'NewASN1Ref({0}),'.format(y[1:len(y)-1])
         ind += 1
-    s +=  '}, RR:[]ASN1Ref{'
+    s +=  '}, RR:[]*ASN1Ref{'
     for vr in S._rr:
         #rr.append( range_to_defin(vr, Obj) )
         y = range_to_defin(vr, Obj)
-        s += 'ASN1Ref{{Mod:"", Obj:{0} }},'.format(y)
+        s += 'NewASN1Ref({0}),'.format(y)
     s +=  '}, '
     # extension part
     if S._ev is None:
         ev, er = '', ''
     else:
-        s += 'EV:[]ASN1Ref{'
+        s += 'EV:[]*ASN1Ref{'
         for v in S._ev:
             #ev.append( value_to_defin(v, Obj, Gen, ind) )
             for y in value_to_defin(v, Obj, Gen, ind):
               if len(y)==1:
-                s += 'ASN1Ref{{ Mod:"", Obj:{0} }},'.format(y)
+                s += 'NewASN1Ref({0}),'.format(y)
               elif len(y)==2:
-                s += 'ASN1Ref{{Mod:{0}, Obj:{1}}},'.format(y[0],y[1])
+                s += 'NewASN1RefWithMod({0},{1}),'.format(y[0],y[1])
               else:
-                s += 'ASN1Ref{{Mod:"", Obj:{0} }},'.format(y[1:len(y)-1])
+                s += 'NewASN1Ref({0}),'.format(y[1:len(y)-1])
             ind += 1
-        s += '}, ER:[]ASN1Ref{'
+        s += '}, ER:[]*ASN1Ref{'
         for vr in S._er:
             #er.append( range_to_defin(vr, Obj) )
             for y in range_to_defin(vr, Obj):
-              er += 'ASN1Ref{{Mod:"", Obj:{0} }},'.format(y[1:len(y)-1])
+              er += 'NewASN1Ref({0}),'.format(y[1:len(y)-1])
         s +='} '
     #
     return s + '}' 
@@ -347,13 +347,13 @@ def typeref_to_defin(Obj):
         while objname in GLOBAL.MOD[modname]['_imp_']:
             modname = GLOBAL.MOD[modname]['_imp_'][objname]
         if isinstance(Obj._typeref, ASN1RefType):
-            return 'ASN1RefType{{Mod:\"{0}\", Obj:\"{1}\"}}'.format(modname, objname)
+            return 'NewASN1RefType(\"{0}\", \"{1}\")'.format(modname, objname)
         elif isinstance(Obj._typeref, ASN1RefClassField):
-            return 'ASN1RefClassField{{Ref:AsnReference{{Mod:\"{0}\", Obj:\"{1}\"}}, Obj:{2}}}'.format(modname, objname, goarr(Obj._typeref.ced_path))
+            return 'ASN1RefClassField{{Ref:NewAsnRefWithMod(\"{0}\", \"{1}\"), Obj:{2}}}'.format(modname, objname, goarr(Obj._typeref.ced_path))
         elif isinstance(Obj._typeref, ASN1RefClassValField):
-            return 'ASN1RefClassValField{Ref:AsnReference{{Mod:\"{0}\", Obj:\"{1}\"}}, Obj:{2}}'.format(modname, objname, goArr(Obj._typeref.ced_path))
+            return 'ASN1RefClassValField{Ref:NewAsnRefWithMod(\"{0}\", \"{1}\"), Obj:{2}}'.format(modname, objname, goArr(Obj._typeref.ced_path))
         elif isinstance(Obj._typeref, ASN1RefChoiceComp):
-            return 'ASN1RefChoiceComp{AsnReference{{\"{0}\", \"{1}\"}}, {2}}'.format(modname, objname, Obj._typeref.ced_path)
+            return 'ASN1RefChoiceComp{NewAsnRefWithMod(\"{0}\", \"{1}\"), {2}}'.format(modname, objname, Obj._typeref.ced_path)
         elif isinstance(Obj._typeref, ASN1RefInstOf):
             return 'ASN1RefInstOf(\"{0}\", \"{1}\")'.format(modname, objname)
         else:
@@ -615,11 +615,15 @@ class GoGenerator(_Generator):
         #
         # now generate the set of values
         s = '[]ASN1Ref{'
-        for y in value_to_defin(Obj._val, Obj, self):
-          if len(y)==2:
-            s += 'ASN1Ref{{Mod:{0}, Obj:{1}}},'.format(y[0], y[1])
-          else:
-            s += 'ASN1Ref{{Mod:"", Obj:{0}}},'.format(y[0])
+        v = value_to_defin(Obj._val, Obj, self)
+        if isinstance(v, str):
+            s += 'NewASN1Ref({0}),'.format(v)
+        else:
+            for y in v:
+              if len(y)==2:
+                s += 'NewASN1RefWithMod({0}, {1}),'.format(y[0], y[1])
+              else:
+                s += 'NewASN1Ref({0}),'.format(y[0])
 
         s += '}'
         s = 'p.{0}.A_val = {1}'.format(Obj._pyname, s)
@@ -670,10 +674,13 @@ class GoGenerator(_Generator):
     def gen_type_int(self, Obj):
         # named integer values
         if Obj._cont:
+            #self.wdl('type {0} int'.format(Obj._pyname))
             # Cont is an ASN1Dict with {str: int}
-            self.wil('p.{0}.Children = InterfaceMap{{Data:make(map[string]AsnI)}}'.format(Obj._pyname))
+            self.wil('p.{0}.Children = NewDict()'.format(Obj._pyname))
             for a in Obj._cont.items():
                   r = extract_charstr(Obj._pyname)[0]
+                  #self.wdl('const {0} {1} = {2}'.format(a[0],r,a[1]))
+                  self.wil('// Integer value {0}.{1} = {2}'.format(Obj._pyname, r,a[1]))
                   self.wil('p.{0}.Children.Add({1}, &AsnINT{{ Val:{2} }})'.format(r, qrepr(a[0]), a[1]))
             #self.wil('{0}._cont = ASN1Dict({1!r})'.format(Obj._pyname, list(Obj._cont.items())))
         # value constraint
@@ -686,12 +693,17 @@ class GoGenerator(_Generator):
     
     def gen_type_enum(self, Obj):
         # enum content
+        #self.wdl('type {0} int'.format(Obj._pyname))
+        #self.wdl('const (')
         if Obj._cont:
-            self.wil('p.{0}.Children = InterfaceMap{{Data:make(map[string]AsnI)}}'.format(Obj._pyname))
+            self.wil('p.{0}.Children = NewDict()'.format(Obj._pyname))
             for a in Obj._cont.items():
                   r = extract_charstr(a[0])[0]
-                  self.wil('p.{0}.Children.Add("{1}", &AsnENUM{{ Val:{2} }})'.format(Obj._pyname, r,a[1]))
+                  #self.wdl('\t{0} {1} = {2}'.format(a[0], Obj._pyname, a[1]))
+                  self.wil('// ENUM {0}.{1} = {2}'.format(Obj._pyname, r,a[1]))
+                  self.wil('p.{0}.Children.Add("{1}", NewAsnENUM({2}))'.format(Obj._pyname, r,a[1]))
             #self.wil('{0}._cont = ASN1Dict({1!r})'.format(Obj._pyname, list(Obj._cont.items())))
+            #self.wdl(')')
             if Obj._ext is None:
                 self.wil('p.{0}.ExtFlag = false'.format(Obj._pyname))
                 pass
@@ -710,9 +722,10 @@ class GoGenerator(_Generator):
         # content: named bit offsets
         if Obj._cont:
             # Cont is an ASN1Dict with {str: int}
-            self.wil('p.{0}.Children = InterfaceMap{{Data:make(map[string]AsnI)}}'.format(Obj._pyname))
+            self.wil('p.{0}.Children = NewDict()'.format(Obj._pyname))
             for a in Obj._cont.items():
                   r = extract_charstr(a[0])[0]
+                  self.wil('// Bitstring {0}.{1}'.format(Obj._pyname, r))
                   self.wil('p.{0}.Children.Add("{1}",{2})'.format(Obj._pyname, r))
             #self.wil('{0}._cont = ASN1Dict({1!r})'.format(Obj._pyname, list(Obj._cont.items())))
         # value constraint
@@ -760,9 +773,10 @@ class GoGenerator(_Generator):
                 Cont._pyname = '_{0}_{1}'.format(Obj._pyname, name_to_defin(Cont._name))
                 self.gen_type(Cont, compts=True)
                 links[name] = Cont._pyname
-            self.wil('p.{0}.Children = InterfaceMap{{Data:make(map[string]AsnI)}}'.format(Obj._pyname))
+            self.wil('p.{0}.Children = NewDict()'.format(Obj._pyname))
             # now link all of them in an ASN1Dict into the Obj content
             for a in links:
+                  self.wil('// CHOICE {0}.{1} = {2}'.format(Obj._pyname, qrepr(a), links[a]))
                   self.wil('p.{0}.Children.Add({1},p.{2})'.format(Obj._pyname, qrepr(a), links[a]))
             #self.wil('{0}._cont = ASN1Dict(['.format(Obj._pyname))
             #for name in links:
@@ -795,8 +809,9 @@ class GoGenerator(_Generator):
                 self.gen_type(Cont, compts=True)
                 links[name] = Cont._pyname
             # now link all of them in an ASN1Dict into the Obj content
-            self.wil('p.{0}.Children = InterfaceMap{{Data:make(map[string]AsnI)}}'.format(Obj._pyname))
+            self.wil('p.{0}.Children = NewDict()'.format(Obj._pyname))
             for name in links:
+                self.wil('// ASNDICT {0}.{1} = {2}'.format(Obj._pyname, name, links[name]))
                 self.wil('p.{0}.Children.Add("{1}", p.{2})'.format(Obj._pyname, name, links[name]))
             # extension
             if Obj._ext is None:
@@ -822,7 +837,8 @@ class GoGenerator(_Generator):
             Cont._pyname = '_{0}_{1}'.format(Obj._pyname, name_to_defin(Cont._name))
             self.gen_type(Cont)
             # now link it to the Obj content
-            self.wil('p.{0}.Children = InterfaceMap{{Data:make(map[string]AsnI,1)}}'.format(Obj._pyname))
+            self.wil('p.{0}.Children = NewDict()'.format(Obj._pyname))
+            self.wil('// SEQ OF {0}.{1} = {2}'.format(Obj._pyname,  qrepr(Cont._pyname),Cont._pyname))
             self.wil('p.{0}.Children.Add({1}, p.{2})'.format(Obj._pyname, qrepr(Cont._pyname),Cont._pyname))
         # value constraint
         self.gen_const_val(Obj)
@@ -841,8 +857,9 @@ class GoGenerator(_Generator):
                 links[name] = Cont._pyname
             # now link all of them in an ASN1Dict into the Obj content
             #self.wil('{0}._cont = ASN1Dict(['.format(Obj._pyname))
-            self.wil('p.{0}.Children = InterfaceMap{{Data:make(map[string]AsnI)}}'.format(Obj._pyname))
+            self.wil('p.{0}.Children = NewDict()'.format(Obj._pyname))
             for name in links:
+                self.wil('// CLASS {0}.{1} = {2}'.format(Obj._pyname, qrepr(name), links[name]))
                 self.wil('p.{0}.Children.Add({1}, p.{2})'.format(Obj._pyname, qrepr(name), links[name]))
     
     def gen_type_open(self, Obj):
@@ -928,7 +945,7 @@ class GoGenerator(_Generator):
         if Consts_val:
             Sval = reduce_setdicts(Consts_val)
             self.wil('p.{0}.A_const_val = {1}'.format(Obj._pyname, set_to_defin(Sval, Obj, self)))
-    
+
     def gen_const_table(self, Obj):
         # table constraint: processing only a local and single constraint
         Consts_tab = [C for C in Obj._const if C['type'] == CONST_TABLE]
@@ -964,7 +981,7 @@ class GoGenerator(_Generator):
                 self.wil('p.{0}.A_const_tab_at = nil'.format(Obj._pyname))
             else:
 #                self.wil('{0}._const_tab_at = ASN1Ref{{"{1}","{2}"}}'.format(Obj._pyname, tuple(Const['at'])))
-                self.wil('p.{0}.A_const_tab_at = ASN1Ref{{Mod:"{1}",Obj:"{2}"}}'.format(Obj._pyname, Const['at'][0],Const['at'][1]))
+                self.wil('p.{0}.A_const_tab_at = NewASN1RefWithMod("{1}","{2}")'.format(Obj._pyname, Const['at'][0],Const['at'][1]))
              # define the table object identifier
             try:
                 self.wil('p.{0}.A_const_tab_id = {1}'.format(Obj._pyname, qrepr(Obj._typeref.ced_path[-1])))
@@ -992,116 +1009,4 @@ class GoGenerator(_Generator):
                 self.gen_type(Const['obj'])
                 # now link it to the Obj constraint
                 self.wrl('p.{0}._const_cont = {1}'.format(Obj._pyname, Const['obj']._pyname))
-
-#------------------------------------------------------------------------------#
-# JSON graph dependency generator
-#------------------------------------------------------------------------------#
-# generate a JSON file listing all ASN.1 objects dependencies
-# then usable with the force-directed graph at https://bl.ocks.org/mbostock/4062045
-# node.group is the module which hosts the object
-# link.value is a fixed value
-# WNG: for large ASN.1 specification, the web browser dies...
-
-def asnmod_build_dep(mods):
-    """
-    Returns two dicts:
-    - one listing all {caller ASN1Obj: list of called ASN1Obj}
-    - one listing all {called ASN1Obj: list of caller ASN1Obj} 
-    """
-    # build two dicts:
-    # 1 of {called_object: list of caller objects}
-    # 1 of {caller_object: list of called objects}
-    CallerDict, CalledDict = {}, {}
-    for mod in mods:
-        Mod = mods[mod]
-        for name in Mod:
-            if name[0] != '_':
-                Obj = Mod[name]
-                objname = (mod, Obj._name)
-                for Ref in Obj._ref:
-                    if Ref.called in CalledDict:
-                        if objname not in CalledDict[Ref.called]:
-                            CalledDict[Ref.called].append( objname )
-                    else:
-                        CalledDict[Ref.called] = [ objname ]
-                    if objname in CallerDict:
-                        if Ref not in CallerDict[objname]:
-                            CallerDict[objname].append( Ref )
-                    else:
-                        CallerDict[objname] = [ Ref ]
-    return CallerDict, CalledDict
-
-class JSONDepGraphGenerator(_Generator):
-    """
-    JSONDepGraphGenerator generates a JSON file that enables to produce a directed
-    graph representing all ASN.1 caller objects linked to all other called objects
-    
-    The JSON file can be used directly with https://bl.ocks.org/mbostock/4062045
-    to be visualized
-    """
-    
-    # the link force is fixed for all linked between caller / callee objects
-    LINK_FORCE = 1
-    
-    def gen(self):
-        #
-        groups = list(GLOBAL.MOD.keys())
-        #
-        # building 2 dicts: 1 with referrers objects, 1 with referred objects
-        obj_refr, obj_refd = asnmod_build_dep(GLOBAL.MOD)
-        #
-        self.wrl('{')
-        self.indent += 2
-        self.wrl('"_comment": "code automatically generated by pycrate_asn1c",')
-        #
-        self.wrl('"nodes": [')
-        self.indent += 2
-        nodes = []
-        for mod in GLOBAL.MOD:
-            if '_obj_' in GLOBAL.MOD[mod]:
-                for name in GLOBAL.MOD[mod]['_obj_']:
-                    nodes.append('{"id": "%s.%s", "group": %i},'\
-                                 % (mod, name, groups.index(mod)))
-        # remove last coma
-        #nodes[-1] = nodes[-1][:-1]
-        last_node = nodes[-1]
-        #print('last_node:', last_node)
-        del nodes[-1]
-        nodes.append( last_node[:-1] )
-        #
-        for l in nodes:
-            self.wrl(l)
-        #
-        self.indent -= 2
-        self.wrl('],')
-        #
-        self.wrl('"links": [')
-        self.indent += 2
-        links = []
-        for (mod, name) in obj_refr:
-            for tgt in obj_refr[(mod, name)]:
-                if isinstance(tgt.called, tuple) and \
-                len(tgt.called) == 2 and tgt.called[1]:
-                    tgt = list(tgt.called)
-                    # we must ensure that tgt is really defined within tgt.called[0]
-                    # and not imported from another module
-                    while tgt[1] not in GLOBAL.MOD[tgt[0]]:
-                        tgt[0] = GLOBAL.MOD[tgt[0]]['_imp_'][tgt[1]]
-                    links.append('{"source": "%s.%s", "target": "%s.%s", "value": %i},'\
-                                 % (mod, name, tgt[0], tgt[1], self.LINK_FORCE))
-        # remove last coma
-        #links[-1] = links[-1][:-1]
-        last_link = links[-1]
-        #print('last_link:', last_link)
-        del links[-1]
-        links.append( last_link[:-1] )
-        #
-        for l in links:
-            self.wrl(l)
-        #
-        self.indent -= 2
-        self.wrl(']')
-        #
-        self.indent -= 2
-        self.wrl('}//1054')
 
