@@ -349,7 +349,7 @@ def typeref_to_defin(Obj):
         if isinstance(Obj._typeref, ASN1RefType):
             return 'NewASN1RefType(\"{0}\", \"{1}\")'.format(modname, objname)
         elif isinstance(Obj._typeref, ASN1RefClassField):
-            return 'ASN1RefClassField{{Ref:NewAsnRefWithMod(\"{0}\", \"{1}\"), Obj:{2}}}'.format(modname, objname, goarr(Obj._typeref.ced_path))
+            return 'NewASN1RefClassField(NewASN1RefType(\"{0}\", \"{1}\"), {2})'.format(modname, objname, goarr(Obj._typeref.ced_path))
         elif isinstance(Obj._typeref, ASN1RefClassValField):
             return 'ASN1RefClassValField{Ref:NewAsnRefWithMod(\"{0}\", \"{1}\"), Obj:{2}}'.format(modname, objname, goArr(Obj._typeref.ced_path))
         elif isinstance(Obj._typeref, ASN1RefChoiceComp):
@@ -617,7 +617,11 @@ class GoGenerator(_Generator):
         s = '[]ASN1Ref{'
         v = value_to_defin(Obj._val, Obj, self)
         if isinstance(v, str):
-            s += 'NewASN1Ref({0}),'.format(v)
+            if Obj.TYPE == 'INTEGER':
+                self.wil('p.{0}.Val = {1}'.format(Obj._pyname, v))
+                return
+            else:
+                s += 'NewASN1Ref({0}),'.format(v)
         else:
             for y in v:
               if len(y)==2:

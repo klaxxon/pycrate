@@ -38,7 +38,12 @@ type ASN1RefInstOf struct {
 }
 
 type ASN1RefClassField struct {
-	ASN1Ref
+	ref ASN1RefI
+	typ string
+}
+
+func NewASN1RefClassField(ref ASN1RefI, typ string) *ASN1RefClassField {
+	return &ASN1RefClassField{ref: ref, typ: typ}
 }
 
 type ASN1RefClassIntern struct {

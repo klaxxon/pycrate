@@ -192,8 +192,8 @@ type AsnNULL struct {
 
 type AsnINT struct {
 	Asn
-	Val            int64
-	A_val          interface{}
+	Val int64
+	//A_val          interface{}
 	A_const_val    ASN1Set
 	A_const_tab    interface{}
 	A_const_tab_at interface{}
