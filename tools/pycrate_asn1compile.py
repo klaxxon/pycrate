@@ -180,7 +180,7 @@ def main():
         return 0
     
     if args.go:
-      generate_modules(GoGenerator, "gocode/src/" + args.output + '.go')
+      generate_modules(GoGenerator, "gocode/src/" + args.output)
     else:
       generate_modules(PycrateGenerator, args.output + '.py')
     if args.json:
