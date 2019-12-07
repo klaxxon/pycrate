@@ -424,13 +424,26 @@ def match_typeref(text):
 def strip(text=''):
     return text.strip()
 
-def name_to_golang_exported(n):
+def name_to_golang(n, public):
     if iskeyword(n):
         # n is a Python keyword
         n += '_'
-    else:
-        n = n[0].upper() + n[1:]
-    return n.replace('-', '_').replace(' ', '_')
+    r = ''
+    capitalize = False
+    for a in n:
+        if a == '-' or a == ' ':
+            r += '_'
+            capitalize = True
+            #r += a
+            continue
+        a = a.lower()
+        if capitalize:
+            a = a.upper()
+            capitalize = False
+        r += a
+    if public:
+        return r[0].upper() + r[1:]
+    return r[0].lower() + r[1:]
 
 def name_to_defin(n):
     if iskeyword(n):
