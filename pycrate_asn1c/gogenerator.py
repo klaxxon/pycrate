@@ -33,7 +33,9 @@ from .setobj import *
 from .refobj import *
 from .asnobj import get_asnobj, ASN1Obj, INT, OID
 from .stringlist import *
+import time
 import os
+import math
 
 class _Generator(object):
     
@@ -46,8 +48,9 @@ class _Generator(object):
         self.dir = pkg[0:p-1]
         pmod = pkg[p:].lower()
         self.pkg = pmod
-        if not os.path.isdir(self.dir + "/" + pmod):
-          os.mkdir(self.dir + "/" + pmod)
+        if os.path.isdir(self.dir + "/" + pmod):
+            os.rename(self.dir + "/" + pmod, self.dir + "/" + pmod + "_" + str(time.time()))
+        os.mkdir(self.dir + "/" + pmod)
         self.files = []
         self.gen()
 
@@ -366,11 +369,6 @@ class GoGenerator(_Generator):
     _impl = 0
     dparms = ["_mod", "_name", "TYPE", "_ext", "_flag"]
 
-    enums = dict()
-    def saveEnum(self, pkg, name, val):
-        if pkg not in self.enums:
-            self.enums[pkg] = dict()
-        self.enums[pkg][name] = val
 
     def dumpConstraint(self, i):
         self.dumpfd.write("Constraint type: {0}\n".format(i["type"]))
@@ -422,8 +420,12 @@ class GoGenerator(_Generator):
             self.basicTypes[ename] = "string"
             return True
         elif part.TYPE == 'INTEGER':
-            ename = name_to_golang(structName, True)
-            self.basicTypes[ename] = "int64"
+            pname = name_to_golang(part._name, True)
+            self.basicTypes[pname] = "int64"
+            return True
+        elif part.TYPE == 'OPEN_TYPE':
+            pname = name_to_golang(part._name, True)
+            self.basicTypes[pname] = "interface{}"
             return True
         return False
 
@@ -458,91 +460,41 @@ class GoGenerator(_Generator):
                     continue
 
                 if part.TYPE == 'ENUMERATED':
-                  ename = name_to_golang(structName, True)
-                  for c in part._cont:
-                    val = str(part._cont[c])
-                    self.saveEnum(ename, name_to_golang(c, True), val)
+                    self.genConstants(modName, part)
                 elif part.TYPE == 'SEQUENCE':
                     structName = name_to_golang(structName, True)
-                    self.fd = open(self.dest + "/" + structName + ".go", 'w')
-                    self.fd.write("package " + self.pkg + "\n\n")
                     self.genSequence(structName, part)
-                    self.fd.close()
+                elif part.TYPE == 'SEQUENCE OF':
+                    structName = name_to_golang(structName, True)
+                    self.genSequenceOf(structName, part)
                 elif part.TYPE == 'CHOICE':
                     structName = name_to_golang(structName,True)
-                    self.fd = open(self.dest + "/" + structName + ".go", 'w')
-                    self.fd.write("package " + self.pkg + "\n\n")
-                    self.fd.write("type " + structName + " struct {\n")
-                    self.fd.write("\tChoice\tinterface{}\n")
-                    self.fd.write("}\n")
-                    self.fd.close()
-                elif part.TYPE == 'CLASS' and isinstance(part._val, dict):
-                    structName = name_to_golang(structName,True)
-                    self.fd = open(self.dest + "/"  + structName + ".go", 'w')
-                    self.fd.write("package " + self.pkg + "\n\n")
-                    '''
-                    for c in part._val["root"]:
-                        item = part._val["root"][c]
-                        itemName = name_to_golang(c)
-                        self.fd.write("type " + itemName + " struct {\n")
-                        self.fd.write("\t" + itemName + "\t*" + itemName + "\n")
-                        self.fd.write("}\n")
-                    '''
-                    self.fd.close()
+                    self.genChoice(structName, part)
+                elif part.TYPE == 'CLASS':
+                    if isinstance(part._val, dict):
+                        structName = name_to_golang(structName,True)
+                        fd = open(self.dest + "/"  + structName + ".go", 'w')
+                        fd.write("package " + self.pkg + "\n\n")
+                        '''
+                        for c in part._val["root"]:
+                            item = part._val["root"][c]
+                            itemName = name_to_golang(c)
+                            self.fd.write("type " + itemName + " struct {\n")
+                            self.fd.write("\t" + itemName + "\t*" + itemName + "\n")
+                            self.fd.write("}\n")
+                        '''
+                        fd.close()
+                else:
+                    print("Unhandled " + part.TYPE)
 
 
-        self.fd = open(self.dest + "/enums.go", 'w')
-        self.fd.write("package " + self.pkg + '''
-
-import (
-    "fmt"
-    "strconv"
-)
-
-var enums = map[string]map[string]string{
-''')
-        for a in self.enums:
-            enums = self.enums[a]
-            self.fd.write("\t\"{0}\":{{\n".format(a))
-            for b in enums:
-                val = self.enums[a][b]
-                self.fd.write("\t\t\"{0}\":\"{1}\",\n".format(b, val))
-            self.fd.write("\t},\n")
-
-        self.fd.write('''}
-
-        // GetStrEnum returns string enum value for given type and name or "" when not found
-        func GetStrEnum(typ, name string) string {
-          if elst, ok := enums[typ]; ok {
-            if val, ok := elst[name]; ok {
-              return val
-            }
-            return ""
-          }
-          return ""
-        }
-
-        // GetIntEnum returns int64 enum value for given type and name or error when not found
-        func GetIntEnum(typ, name string) (int64, error) {
-          val := GetStrEnum(typ, name)
-          if val == "" {
-             return 0, fmt.Errorf("Enum not found")
-          }
-          i, err := strconv.ParseInt(val, 10, 64)
-          if err {
-            return 0, err
-          }
-          return i, nil
-        }
-        ''')
-        self.fd.close()
-
-        self.fd = open(self.dest + "/basicTypes.go", 'w')
-        self.fd.write("package " + self.pkg + "\n\n")
-        for a in self.basicTypes:
-            self.fd.write("type {0} {1}\n".format(a, self.basicTypes[a]))
-        self.fd.close()
-
+        '''
+                self.fd = open(self.dest + "/basicTypes.go", 'w')
+                self.fd.write("package " + self.pkg + "\n\n")
+                for a in self.basicTypes:
+                    self.fd.write("type {0} {1}\n".format(a, self.basicTypes[a]))
+                self.fd.close()
+        '''
 
         for mod_name in [mn for mn in GLOBAL.MOD if mn[:1] != '_']:
             self.open()
@@ -588,8 +540,8 @@ var enums = map[string]map[string]string{
             for pyobjname in self._all_:
                 obj = self._allobj_.get(pyobjname)
                 if obj.TYPE != "ENUMERATED":
-                    str += 'p.{0},'.format(pyobjname)
-            str += '}'
+                    strr += 'p.{0},'.format(pyobjname)
+            strr += '}'
             self.wil(str)
             modlist.append(pymodname)
             #
@@ -642,17 +594,109 @@ var enums = map[string]map[string]string{
         self.wil('}')
         self.save("Init")
 
-    def genSequence(self, structName, part):
-        self.fd.write("// " + part._text_def + "\n")
-        self.fd.write("type " + structName + " struct {\n")
+    def genConstants(self, modName, part):
+        if os.path.isdir(self.dest + "/" + modName):
+            fd = open(self.dest + "/" + modName + "/consts.go", "a")
+        else:
+            os.mkdir(self.dest + "/" + modName)
+            fd = open(self.dest + "/" + modName + "/consts.go", "w")
+            fd.write("package " + modName + "\n\n")
+        fd.write("const (\n")
+        for c in part._cont:
+            val = str(part._cont[c])
+            fd.write("\t" + name_to_golang(c, True) + "\tint = " + val + "\n")
+        fd.write(")\n")
+        fd.close()
+
+    def genChoice(self, structName, part):
+        fd = open(self.dest + "/" + structName + ".go", 'w')
+        fd.write('''
+package {0}
+import "asn2gort"
+// {1}
+type {2} struct {{
+    Choice  interface{{}}
+}}
+
+// Decode specified struct
+func (s *{2})Decode(per *asn2gort.PERDecoder) error {{
+  choiceIdx = per.GetUintVal({3})
+}}
+
+// Encode specified struct
+func (s *{2})Encode(per *asn2gort.PEREncoder) error {{
+}}
+        '''.format(self.pkg, part._text_def, structName, self.minBits(len(part._root))))
+        fd.close()
+
+    def genSequenceOf(self, structName, part):
+        fd = open(self.dest + "/" + structName + ".go", 'w')
+        fd.write("package " + self.pkg + "\n\n")
+        fd.write("import \"asn2gort\"\n\n")
+        fd.write("// " + part._text_def + "\n")
+        fd.write("type " + structName + " struct {\n")
         for c in part._cont:
             item = part._cont[c]
             itemName = name_to_golang(c, True)
             if self.checkBasicType(item, structName):
                 continue
-            self.fd.write("\t" + itemName + "\t*" + itemName + "\n")
-        self.fd.write("}\n")
+            if item.TYPE == "ENUMERATED":
+                fd.write("\t" + itemName + "\tint\t// " + item._text_def + "\n")
+            else:
+                fd.write("\t" + itemName + "\tinterface{}\t// " + item._text_def + "\n")
+        fd.write("}\n\n")
+        fd.write("// Decode specified struct\n")
+        fd.write("func (s *" + structName + ")Decode(per *asn2gort.PERDecoder) error {\n")
+        for c in part._cont:
+            item = part._cont[c]
+            itemName = name_to_golang(c, True)
+            fd.write("  if err := s.{0}.Decode(per); err {{ return err }}\n".format(itemName))
+        fd.write("  return nil\n")
+        fd.write("}\n\n")
+        fd.write("// Encode specified struct\n")
+        fd.write("func (s *" + structName + ")Encode(per *asn2gort.PEREncoder) error {\n")
+        for c in part._cont:
+            item = part._cont[c]
+            itemName = name_to_golang(c, True)
+            fd.write("  if err := s.{0}.Encode(per); err {{ return err }}\n".format(itemName))
+        fd.write("  return nil\n")
+        fd.write("}\n")
+        fd.close()
 
+
+    def genSequence(self, structName, part):
+        fd = open(self.dest + "/" + structName + ".go", 'w')
+        fd.write("package " + self.pkg + "\n\n")
+        fd.write("import \"asn2gort\"\n\n")
+        fd.write("// " + part._text_def + "\n")
+        fd.write("type " + structName + " struct {\n")
+        for c in part._cont:
+            item = part._cont[c]
+            itemName = name_to_golang(c, True)
+            if self.checkBasicType(item, structName):
+                continue
+            if item.TYPE == "ENUMERATED":
+                fd.write("\t" + itemName + "\tint\t// " + item._text_def + "\n")
+            else:
+                fd.write("\t" + itemName + "\tinterface{}\t// " + item._text_def + "\n")
+        fd.write("}\n\n")
+        fd.write("// Decode specified struct\n")
+        fd.write("func (s *" + structName + ")Decode(per *asn2gort.PERDecoder) error {\n")
+        for c in part._cont:
+            item = part._cont[c]
+            itemName = name_to_golang(c, True)
+            fd.write("  if err := s.{0}.Decode(per); err {{ return err }}\n".format(itemName))
+        fd.write("  return nil\n")
+        fd.write("}\n\n")
+        fd.write("// Encode specified struct\n")
+        fd.write("func (s *" + structName + ")Encode(per *asn2gort.PEREncoder) error {\n")
+        for c in part._cont:
+            item = part._cont[c]
+            itemName = name_to_golang(c, True)
+            fd.write("  if err := s.{0}.Encode(per); err {{ return err }}\n".format(itemName))
+        fd.write("  return nil\n")
+        fd.write("}\n")
+        fd.close()
 
     def gen_mod(self, Mod):
         obj_names = [obj_name for obj_name in Mod.keys() if obj_name[0:1] != '_']
@@ -669,7 +713,13 @@ var enums = map[string]map[string]string{
             if hasattr(self, '_const_tabs'):
                 del self._const_tabs
             self.wdl('')
-    
+
+    def minBits(self, val):
+        a = math.log(val) / math.log(2)
+        if (a-int(a)) == 0:
+            return a
+        return int(a+1)
+
     def _handle_dup(self, Obj):
         if Obj._pyname in self._all_:
             # a similar object was already generated (this is mainly due to a 
