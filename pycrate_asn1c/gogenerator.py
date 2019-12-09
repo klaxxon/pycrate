@@ -456,7 +456,7 @@ class GoGenerator(_Generator):
                 else:
                     item = GLOBAL.MOD[mod_name][a]
                     self.asnObject[a.lower()] = item
-                    if a.lower() == "handoverrequired":
+                    if a.lower() == "s1setup":
                         print("Here")
 
         for mod_name in [mn for mn in GLOBAL.MOD if mn[:1] != '_']:
@@ -498,14 +498,12 @@ class GoGenerator(_Generator):
                         structName = name_to_golang(structName,True)
                         fd = open(self.dest + "/"  + structName + ".go", 'w')
                         fd.write("package " + self.pkg + "\n\n")
-                        '''
-                        for c in part._val["root"]:
-                            item = part._val["root"][c]
-                            itemName = name_to_golang(c)
-                            self.fd.write("type " + itemName + " struct {\n")
-                            self.fd.write("\t" + itemName + "\t*" + itemName + "\n")
-                            self.fd.write("}\n")
-                        '''
+                        for item in part._val["root"]:
+                            for c in item:
+                                itemName = name_to_golang(c)
+                                self.fd.write("type " + itemName + " struct {\n")
+                                self.fd.write("\t" + itemName + "\t*" + itemName + "\n")
+                                self.fd.write("}\n")
                         fd.close()
                 else:
                     print("Unhandled {0} {1}\n".format(part._name, part.TYPE))
