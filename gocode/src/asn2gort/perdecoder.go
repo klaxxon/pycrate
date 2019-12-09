@@ -90,6 +90,12 @@ func (per *PERDecoder) GetUintVal(bits int, p *uint64) error {
 	return nil
 }
 
+
+func (per *PERDecoder) GetIntVal(p *int64) error {
+	return nil
+}
+
+
 func (per *PERDecoder) GetByte(p *byte) error {
 	if per.bitsLeft() < 8 {
 		return fmt.Errorf("Not enough bits left for GetByte")
