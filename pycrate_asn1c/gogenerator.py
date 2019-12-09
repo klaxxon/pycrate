@@ -421,6 +421,14 @@ class GoGenerator(_Generator):
             ename = name_to_golang(structName, True)
             self.basicTypes[ename] = "string"
             return True
+        elif part.TYPE == 'BIT STRING':
+            ename = name_to_golang(structName, True)
+            self.basicTypes[ename] = "[]byte"
+            return True
+        elif part.TYPE == 'PRINTABLESTRING':
+            ename = name_to_golang(structName, True)
+            self.basicTypes[ename] = "[]byte"
+            return True
         elif part.TYPE == 'INTEGER':
             pname = name_to_golang(part._name, True)
             self.basicTypes[pname] = "int64"
@@ -446,7 +454,10 @@ class GoGenerator(_Generator):
                 if a.lower() in self.asnObject:
                     print("{0} is already defined".format(a))
                 else:
-                    self.asnObject[a.lower()] = GLOBAL.MOD[mod_name][a]
+                    item = GLOBAL.MOD[mod_name][a]
+                    self.asnObject[a.lower()] = item
+                    if a.lower() == "handoverrequired":
+                        print("Here")
 
         for mod_name in [mn for mn in GLOBAL.MOD if mn[:1] != '_']:
             self.currentModule = mod_name
@@ -807,8 +818,6 @@ func (s *{2})Encode(per *asn2gort.PEREncoder) error {{
         #
         # 4) initialize the object Python instance
         # Skip Enums
-        if Obj._pyname == "_S1AP_PROTOCOL_IES_criticality":
-            print("HERE")
         if Obj.TYPE != "ENUMERATED":
             if Obj._mode == "VALUE" and Obj._val != None:
                 self.wdl('\t{0} int'.format(Obj._pyname))
