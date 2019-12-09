@@ -48,9 +48,11 @@ class _Generator(object):
         self.dir = pkg[0:p-1]
         pmod = pkg[p:].lower()
         self.pkg = pmod
+        '''
         if os.path.isdir(self.dir + "/" + pmod):
             os.rename(self.dir + "/" + pmod, self.dir + "/" + pmod + "_" + str(time.time()))
         os.mkdir(self.dir + "/" + pmod)
+        '''
         self.files = []
         self.gen()
 
@@ -435,9 +437,19 @@ class GoGenerator(_Generator):
         #
         modlist = []
         #
+        self.asnObject = dict()
         self.basicTypes = dict()
         self.dumpfd = None
+        self.currentModule = None
         for mod_name in [mn for mn in GLOBAL.MOD if mn[:1] != '_']:
+            for a in [aa for aa in GLOBAL.MOD[mod_name] if aa[:1] != '_']:
+                if a.lower() in self.asnObject:
+                    print("{0} is already defined".format(a))
+                else:
+                    self.asnObject[a.lower()] = GLOBAL.MOD[mod_name][a]
+
+        for mod_name in [mn for mn in GLOBAL.MOD if mn[:1] != '_']:
+            self.currentModule = mod_name
             modName = name_to_defin(mod_name).lower()
             if self.dumpfd != None:
                 self.dumpfd.close()
@@ -485,7 +497,7 @@ class GoGenerator(_Generator):
                         '''
                         fd.close()
                 else:
-                    print("Unhandled " + part.TYPE)
+                    print("Unhandled {0} {1}\n".format(part._name, part.TYPE))
 
 
         '''
@@ -629,36 +641,51 @@ func (s *{2})Encode(per *asn2gort.PEREncoder) error {{
         '''.format(self.pkg, part._text_def, structName, self.minBits(len(part._root))))
         fd.close()
 
+    def getObject(self, name):
+        if name.lower() in self.asnObject:
+            return self.asnObject[name.lower()]
+        else:
+            print("getObject failed for name {0} lookup in module {1}\n".format(name, self.currentModule))
+            return None
+
+    def addDecoder(self, fd, name, item):
+        if item.TYPE == 'INTEGER':
+            obj = self.getObject(name)
+            # Is there a constraint
+            if hasattr(obj, '_const'):
+                if isinstance(obj._const, list):
+                    if len(obj._const) > 0:
+                        c = obj._const[0]
+                        if isinstance(c['root'][0], ASN1RangeInt):
+                            range = c['root'][0]
+                            bits = self.minBits(range.ub - range.lb + 1)
+                            fd.write("  if err := per.GetUintVal({1}, s.{0}); err {{ return err }}\n".format(name, bits))
+                            return
+            else:
+                fd.write("  if err := per.GetIntVal(s.{0}); err {{ return err }}\n".format(name))
+        if item.TYPE == 'OPEN TYPE':
+            fd.write("  // TODO Open type {0}\n".format(name))
+        else:
+            fd.write("  // {0} Type {1}\n".format(name, item.TYPE))
+            fd.write("  if err := s.{0}.Decode(per); err {{ return err }}\n".format(name))
+
+
     def genSequenceOf(self, structName, part):
         fd = open(self.dest + "/" + structName + ".go", 'w')
         fd.write("package " + self.pkg + "\n\n")
         fd.write("import \"asn2gort\"\n\n")
         fd.write("// " + part._text_def + "\n")
         fd.write("type " + structName + " struct {\n")
-        for c in part._cont:
-            item = part._cont[c]
-            itemName = name_to_golang(c, True)
-            if self.checkBasicType(item, structName):
-                continue
-            if item.TYPE == "ENUMERATED":
-                fd.write("\t" + itemName + "\tint\t// " + item._text_def + "\n")
-            else:
-                fd.write("\t" + itemName + "\tinterface{}\t// " + item._text_def + "\n")
+        fd.write("\t// To do add type of SET OF\n")
         fd.write("}\n\n")
         fd.write("// Decode specified struct\n")
         fd.write("func (s *" + structName + ")Decode(per *asn2gort.PERDecoder) error {\n")
-        for c in part._cont:
-            item = part._cont[c]
-            itemName = name_to_golang(c, True)
-            fd.write("  if err := s.{0}.Decode(per); err {{ return err }}\n".format(itemName))
+        fd.write("\t// To do add type of SET OF\n")
         fd.write("  return nil\n")
         fd.write("}\n\n")
         fd.write("// Encode specified struct\n")
         fd.write("func (s *" + structName + ")Encode(per *asn2gort.PEREncoder) error {\n")
-        for c in part._cont:
-            item = part._cont[c]
-            itemName = name_to_golang(c, True)
-            fd.write("  if err := s.{0}.Encode(per); err {{ return err }}\n".format(itemName))
+        fd.write("\t// To do add type of SET OF\n")
         fd.write("  return nil\n")
         fd.write("}\n")
         fd.close()
@@ -678,14 +705,14 @@ func (s *{2})Encode(per *asn2gort.PEREncoder) error {{
             if item.TYPE == "ENUMERATED":
                 fd.write("\t" + itemName + "\tint\t// " + item._text_def + "\n")
             else:
-                fd.write("\t" + itemName + "\tinterface{}\t// " + item._text_def + "\n")
+                fd.write("\t{0}\t*{0}\t// {1} {2}\n".format(itemName, part._mod, item._text_def))
         fd.write("}\n\n")
         fd.write("// Decode specified struct\n")
         fd.write("func (s *" + structName + ")Decode(per *asn2gort.PERDecoder) error {\n")
         for c in part._cont:
             item = part._cont[c]
             itemName = name_to_golang(c, True)
-            fd.write("  if err := s.{0}.Decode(per); err {{ return err }}\n".format(itemName))
+            self.addDecoder(fd, itemName, item)
         fd.write("  return nil\n")
         fd.write("}\n\n")
         fd.write("// Encode specified struct\n")
