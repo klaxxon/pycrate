@@ -369,16 +369,19 @@ class GoGenerator(_Generator):
     ASN.1 runtime, located in pycrate_asn1rt
     """
     _impl = 0
-    dparms = ["_mod", "_name", "TYPE", "_ext", "_flag"]
+    dparms = ["_name", "_mode", "TYPE", "_ext", "_flag", "_mod"]
 
 
     def dumpConstraint(self, i):
-        self.dumpfd.write("Constraint type: {0}\n".format(i["type"]))
+        at = "{none}"
+        if 'at' in i:
+            at = i['at']
+        self.dumpfd.write("Constraint type: {0}, Key: {1}\n".format(i["type"], at))
         pass
 
     def dumpObj(self, indent, i):
         if hasattr(i, "_name"):
-            if i._name == "ProcedureCode":
+            if i._name == "HandoverRequired":
                 print("Here")
         if indent == "":
             self.dumpfd.write("\n")
@@ -414,6 +417,15 @@ class GoGenerator(_Generator):
             else:
                 self.dumpObj(indent + "\t", i._cont)
 
+        if hasattr(i, "_val"):
+            if isinstance(i._val, dict):
+                if i._val['root']:
+                    if isinstance(i._val['root'], list):
+                        for a in i._val['root']:
+                            self.dumpfd.write(indent + "\tVal: {0}\n".format(str(a).replace('\n','')))
+                else:
+                    pass
+
         if hasattr(i, "_const"):
             for a in i._const:
                 self.dumpfd.write(indent)
@@ -442,6 +454,33 @@ class GoGenerator(_Generator):
             self.basicTypes[pname] = "interface{}"
             return True
         return False
+
+    def genType(self, modName, structName, part):
+        if part.TYPE == 'ENUMERATED':
+            self.genConstants(modName, part)
+        elif part.TYPE == 'SEQUENCE':
+            structName = name_to_golang(structName, True)
+            self.genSequence(structName, part)
+        elif part.TYPE == 'SEQUENCE OF':
+            structName = name_to_golang(structName, True)
+            self.genSequenceOf(structName, part)
+        elif part.TYPE == 'CHOICE':
+            structName = name_to_golang(structName, True)
+            self.genChoice(structName, part)
+        elif part.TYPE == 'CLASS':
+            if isinstance(part._val, dict):
+                structName = name_to_golang(structName, True)
+                fd = open(self.dest + "/" + structName + ".go", 'w')
+                fd.write("package " + self.pkg + "\n\n")
+                for item in part._val["root"]:
+                    fd.write("type {0}_{1} struct {{\n".format(part._name, ""))
+                    for c in item:
+                        itemName = name_to_golang(c, True)
+                        fd.write("\t" + itemName + "\t*" + itemName + "\n")
+                        fd.write("}\n")
+                fd.close()
+        else:
+            print("Unhandled {0} {1}\n".format(part._name, part.TYPE))
 
     def gen(self):
         #
@@ -485,36 +524,10 @@ class GoGenerator(_Generator):
                     print("HERE")
                 self.dumpObj("", part)
 
-
                 if self.checkBasicType(part, structName):
                     continue
 
-                if part.TYPE == 'ENUMERATED':
-                    self.genConstants(modName, part)
-                elif part.TYPE == 'SEQUENCE':
-                    structName = name_to_golang(structName, True)
-                    self.genSequence(structName, part)
-                elif part.TYPE == 'SEQUENCE OF':
-                    structName = name_to_golang(structName, True)
-                    self.genSequenceOf(structName, part)
-                elif part.TYPE == 'CHOICE':
-                    structName = name_to_golang(structName,True)
-                    self.genChoice(structName, part)
-                elif part.TYPE == 'CLASS':
-                    if isinstance(part._val, dict):
-                        structName = name_to_golang(structName,True)
-                        fd = open(self.dest + "/"  + structName + ".go", 'w')
-                        fd.write("package " + self.pkg + "\n\n")
-                        for item in part._val["root"]:
-                            for c in item:
-                                itemName = name_to_golang(c, True)
-                                fd.write("type " + itemName + " struct {\n")
-                                fd.write("\t" + itemName + "\t*" + itemName + "\n")
-                                fd.write("}\n")
-                        fd.close()
-                else:
-                    print("Unhandled {0} {1}\n".format(part._name, part.TYPE))
-
+                self.genType(modName, structName, part)
 
         '''
                 self.fd = open(self.dest + "/basicTypes.go", 'w')
