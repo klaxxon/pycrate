@@ -380,6 +380,8 @@ class GoGenerator(_Generator):
         if hasattr(i, "_name"):
             if i._name == "ProcedureCode":
                 print("Here")
+        if indent == "":
+            self.dumpfd.write("\n")
         self.dumpfd.write(indent + "Object ")
         for a in self.dparms:
             if hasattr(i, a):
@@ -409,6 +411,8 @@ class GoGenerator(_Generator):
                         self.dumpfd.write(indent + "Cont: {0} = {1}\n".format(a, val))
                     else:
                         self.dumpObj(indent+"\t", val)
+            else:
+                self.dumpObj(indent + "\t", i._cont)
 
         if hasattr(i, "_const"):
             for a in i._const:
@@ -468,7 +472,7 @@ class GoGenerator(_Generator):
             #if not os.path.isdir(self.dest + "/" + modName):
             #    os.mkdir(self.dest + "/" + modName)
 
-            self.dumpfd.write("\n\n***********************************************\nModule {0}\n***********************************************".format(modName))
+            self.dumpfd.write("\n\n***********************************************\nModule {0}\n***********************************************\n".format(modName))
             constEnums = None
 
             # Create structs for all containers: CHOICE, SEQ, SET, CLASS
@@ -477,7 +481,10 @@ class GoGenerator(_Generator):
                 if structName[:1] == '_':
                     continue
                 part = asnStructs[structName]
+                if structName == "HandoverRequired":
+                    print("HERE")
                 self.dumpObj("", part)
+
 
                 if self.checkBasicType(part, structName):
                     continue
@@ -500,10 +507,10 @@ class GoGenerator(_Generator):
                         fd.write("package " + self.pkg + "\n\n")
                         for item in part._val["root"]:
                             for c in item:
-                                itemName = name_to_golang(c)
-                                self.fd.write("type " + itemName + " struct {\n")
-                                self.fd.write("\t" + itemName + "\t*" + itemName + "\n")
-                                self.fd.write("}\n")
+                                itemName = name_to_golang(c, True)
+                                fd.write("type " + itemName + " struct {\n")
+                                fd.write("\t" + itemName + "\t*" + itemName + "\n")
+                                fd.write("}\n")
                         fd.close()
                 else:
                     print("Unhandled {0} {1}\n".format(part._name, part.TYPE))
