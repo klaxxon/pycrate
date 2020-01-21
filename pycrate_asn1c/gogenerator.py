@@ -32,10 +32,8 @@ from .glob   import *
 from .setobj import *
 from .refobj import *
 from .asnobj import get_asnobj, ASN1Obj, INT, OID
-from .stringlist import *
-import time
 import os
-import math
+
 
 class _Generator(object):
     
@@ -48,37 +46,16 @@ class _Generator(object):
         self.dir = pkg[0:p-1]
         pmod = pkg[p:].lower()
         self.pkg = pmod
-        '''
-        if os.path.isdir(self.dir + "/" + pmod):
-            os.rename(self.dir + "/" + pmod, self.dir + "/" + pmod + "_" + str(time.time()))
-        os.mkdir(self.dir + "/" + pmod)
-        '''
-        self.files = []
+        if not os.path.isdir(self.dest):
+            os,mkdir(self.dest)
+        self.fd = open(self.dest + "/code.go", 'w')
+        self.indent = 0
         self.gen()
-
-    def openFile(self, fn):
-        self.files[fn] = StringList(fn + "_def")
-        self.files[fn] = StringList(fn + "_set")
-
-    def wdl(self, s):
-        self.definition.write(s)
-    
-    def wil(self, s):
-        pass
-        #self.init.write(s)
-
-    def save(self, mod):
-        print('Saving ' + self.dir + "/" + self.pkg + "/" + mod + ".go")
-        if not os.path.isdir(self.dir + "/" + self.pkg + "/" + mod):
-            os,mkdir(self.dir + "/" + self.pkg + "/" + mod)
-        self.fd = open(self.dir + "/" + self.pkg + "/" + mod + ".go", 'w')
-        for a in self.definition.items():
-          self.fd.write('{0}\n'.format(a))
-        self.fd.write("\n\n// Initialization section\n")
-        for a in self.init.items():
-          self.fd.write('{0}\n'.format(a))
         self.fd.close()
-
+    
+    def wrl(self, s):
+        self.fd.write('{0}{1}\n'.format(self.indent * ' ', s))
+    
     def gen(self):
         pass
 
@@ -155,7 +132,7 @@ def value_to_defin(v, Obj=None, Gen=None, ind=None):
         return '0'
     elif Obj.TYPE == TYPE_BOOL:
         # bool
-        return qrepr(v)
+        return repr(v)
     elif Obj.TYPE == TYPE_INT:
         # int (/long)
         rv = repr(v)
@@ -166,55 +143,55 @@ def value_to_defin(v, Obj=None, Gen=None, ind=None):
             return rv
     elif Obj.TYPE == TYPE_REAL:
         # list of 3 int -> convert to 3-tuple
-        mant, ex = qrepr(v[0]), qrepr(v[2])
+        mant, ex = repr(v[0]), repr(v[2])
         if mant[-1] == 'L':
             # again, python2 useless long notation
             mant = mant[:-1]
         if ex[-1] == 'L':
             ex = ex[:-1]
-        return '{%s, %r, %s}' % (mant, v[1], ex)
+        return '(%s, %r, %s)' % (mant, v[1], ex)
     elif Obj.TYPE == TYPE_ENUM:
         # string
-        return qrepr(v)
+        return repr(v)
     elif Obj.TYPE == TYPE_BIT_STR:
         # list of 2 int -> convert to tuple
-        vv, vl = qrepr(v[0]), qrepr(v[1])
+        vv, vl = repr(v[0]), repr(v[1])
         if vv[-1] == 'L':
             vv = vv[:-1]
         if vl[-1] == 'L':
             vl = vl[:-1]
-        return '{%s, %s}' % (vv, vl)
+        return '(%s, %s)' % (vv, vl)
     elif Obj.TYPE == TYPE_OCT_STR:
         # byte-string
         if python_version > 2:
-            return qrepr(v)
+            return repr(v)
         else:
-            return 'b%s' % qrepr(v)
+            return 'b%s' % repr(v)
     elif Obj.TYPE == TYPE_OID:
         # list of int -> convert to tuple
-        return qrepr(tuple(v))
+        return repr(tuple(v))
     elif Obj.TYPE == TYPE_REL_OID:
         # list of int -> convert to tuple
-        return qrepr(tuple(v))
+        return repr(tuple(v))
     elif Obj.TYPE in TYPE_STRINGS:
         # char string
-        return qrepr(v)
+        return repr(v)
     elif Obj.TYPE in (TYPE_TIME_UTC, TYPE_TIME_GEN):
         # tuple of {int, None}
-        return qrepr(v)
+        return repr(v)
     elif Obj.TYPE == TYPE_CHOICE:
         # list of name and single value -> convert to tuple
-        return '{' + qrepr(v[0]) + ', ' + value_to_defin(v[1], Obj.get_cont()[v[0]], Gen) + '}'
+        return '(' + repr(v[0]) + ', ' + value_to_defin(v[1], Obj.get_cont()[v[0]], Gen) + ')'
     elif Obj.TYPE in (TYPE_SEQ_OF, TYPE_SET_OF):
         # list of single value
         return '[' + ', '.join([value_to_defin(i, Obj.get_cont(), Gen) for i in v]) + ']'
     elif Obj.TYPE in (TYPE_SEQ, TYPE_SET):
         # Python dict of {name: single value}
         #return 'ASN1Dict([' + \
-        return '' + \
-               ', '.join(['{{{0}, {1}}}'.format(qrepr(name), value_to_defin(val, Obj.get_cont()[name], Gen)) \
+        return 'dict([' + \
+               ', '.join(['({0}, {1})'.format(repr(name), value_to_defin(val, Obj.get_cont()[name], Gen)) \
                           for (name, val) in v.items()]) + \
-               ''
+               '])'
     elif Obj.TYPE == TYPE_CLASS:
         # Python dict of {name: single value or set of values or type object}
         r = []
@@ -228,18 +205,18 @@ def value_to_defin(v, Obj=None, Gen=None, ind=None):
                     ObjValTr = v[ObjVal._typeref.ced_path[0]]
                     for p in ObjVal._typeref.ced_path[1:]:
                         ObjValTr = ObjValTr.get_cont()[p]
-                    r.append((qrepr(name), value_to_defin(value, ObjValTr, Gen)))
+                    r.append('({0}, {1})'.format(repr(name), value_to_defin(value, ObjValTr, Gen)))
                 else:
-                    r.append((qrepr(name), value_to_defin(value, ObjVal, Gen)))
+                    r.append('({0}, {1})'.format(repr(name), value_to_defin(value, ObjVal, Gen)))
             elif ObjVal._mode == MODE_SET:
                 if ObjVal.TYPE == TYPE_OPEN and isinstance(ObjVal._typeref, ASN1RefClassIntern):
                     # get the typeref object defined in v, and use it to define the ObjVal value
                     ObjValTr = v[ObjVal._typeref.ced_path[0]]
                     for p in ObjVal._typeref.ced_path[1:]:
                         ObjValTr = ObjValTr.get_cont()[p]
-                    r.append((qrepr(name), set_to_defin(value, ObjValTr, Gen)))
+                    r.append('({0}, {1})'.format(repr(name), set_to_defin(value, ObjValTr, Gen)))
                 else:
-                    r.append((qrepr(name), set_to_defin(ASN1Set(value), ObjVal, Gen)))
+                    r.append('({0}, {1})'.format(repr(name), set_to_defin(ASN1Set(value), ObjVal, Gen)))
             else:
                 #ObjVal._mode == MODE_TYPE
                 # value is an ASN1 object, create it first
@@ -250,10 +227,9 @@ def value_to_defin(v, Obj=None, Gen=None, ind=None):
                     value._pyname = '_{0}_val_{1}'.format(Obj._pyname, name_to_defin(value._name))
                 Gen.gen_type(value, compts=False)
                 # object to be linked in the ASN1Dict value 
-                r.append((qrepr(name), "p."+value._pyname))
+                r.append('({0}, {1})'.format(repr(name), value._pyname))
         #return 'ASN1Dict([' + ', '.join(r) + '])'
-        #return '' + ', '.join(r) + ''
-        return r
+        return 'dict([' + ', '.join(r) + '])'
     elif Obj.TYPE in (TYPE_OPEN, TYPE_ANY):
         # list with [object definition, single value]
         # changing it to a 2-tuple
@@ -275,68 +251,50 @@ def value_to_defin(v, Obj=None, Gen=None, ind=None):
 def range_to_defin(r, Obj=None):
     # ASN1Range only applied to TYPE_INT, TYPE_REAL and TYPE_STR_*
     if Obj.TYPE == TYPE_INT:
-        return 'asn2gort.NewASN1RangeInt({0}, {1})'\
+        return 'ASN1RangeInt(lb={0}, ub={1})'\
                .format(value_to_defin(r.lb, Obj), value_to_defin(r.ub, Obj))
     elif Obj.TYPE == TYPE_REAL:
-        return 'asn2gort.ASN1RangeReal{{Lb:{0}, Ub:{1}, Lb_incl:{2!r}, Ub_incl:{3!r}}}'\
+        return 'ASN1RangeReal(lb={0}, ub={1}, lb_incl={2!r}, ub_incl={3!r})'\
                 .format(value_to_defin(r.lb, Obj), value_to_defin(r.ub, Obj), r.lb_incl, r.ub_incl)
     elif Obj.TYPE in ASN1Range._TYPE_STR:
-        return 'asn2gort.ASN1RangeStr{{Lb:{0!r}, Ub:{1!r}}}'.format(r.lb, r.ub)
+        return 'ASN1RangeStr(lb={0!r}, ub={1!r})'.format(r.lb, r.ub)
     else:
         assert()
 
 def set_to_defin(S, Obj=None, Gen=None):
     # ASN1Set(rv, rr, ev, er)
     # ind: value index, required especially for distinguishing sets of CLASS values
-    s = 'asn2gort.ASN1Set{RV:[]*asn2gort.ASN1Ref{'
     ind = 0
     # root part
+    rv, rr = [], []
     for v in S._rv:
-        #rv.append(value_to_defin(v, Obj, Gen, ind))
-        for y in value_to_defin(v, Obj, Gen, ind):
-          if len(y)==1:
-            s += 'asn2gort.NewASN1Ref({0}),'.format(y)
-          elif len(y)==2:
-            s += 'asn2gort.NewASN1RefWithMod({0}, {1}),'.format(y[0],y[1])
-          else:
-            s += 'asn2gort.NewASN1Ref({0}),'.format(y[1:len(y)-1])
+        rv.append( value_to_defin(v, Obj, Gen, ind) )
         ind += 1
-    s +=  '}, RR:[]*asn2gort.ASN1Ref{'
+    rv = '[' + ', '.join(rv) + ']'
     for vr in S._rr:
-        #rr.append( range_to_defin(vr, Obj) )
-        y = range_to_defin(vr, Obj)
-        s += 'asn2gort.NewASN1Ref({0}),'.format(y)
-    s +=  '}, '
+        rr.append( range_to_defin(vr, Obj) )
+    rr = '[' + ', '.join(rr) + ']'
     # extension part
     if S._ev is None:
-        ev, er = '', ''
+        ev, er = 'None', '[]'
     else:
-        s += 'EV:[]*asn2gort.ASN1Ref{'
+        ev, er = [], []
         for v in S._ev:
-            #ev.append( value_to_defin(v, Obj, Gen, ind) )
-            for y in value_to_defin(v, Obj, Gen, ind):
-              if len(y)==1:
-                s += 'asn2gort.NewASN1Ref({0}),'.format(y)
-              elif len(y)==2:
-                s += 'asn2gort.NewASN1RefWithMod({0},{1}),'.format(y[0],y[1])
-              else:
-                s += 'asn2gort.NewASN1Ref({0}),'.format(y[1:len(y)-1])
+            ev.append( value_to_defin(v, Obj, Gen, ind) )
             ind += 1
-        s += '}, ER:[]*asn2gort.ASN1Ref{'
+        ev = '[' + ', '.join(ev) + ']'
         for vr in S._er:
-            #er.append( range_to_defin(vr, Obj) )
-            for y in range_to_defin(vr, Obj):
-              er += 'asn2gort.NewASN1Ref({0}),'.format(y[1:len(y)-1])
-        s +='} '
+            er.append( range_to_defin(vr, Obj) )
+        er = '[' + ', '.join(er) + ']'
     #
-    return s + '}' 
+    return 'ASN1Set(rv={0}, rr={1}, ev={2}, er={3})'.format(rv, rr, ev, er)
 
 def tag_to_defin(t):
-    return '{{{0!r}, {1}, {2}}}'.format(t[0], _tag_lut[t[1]], _tag_lut[t[2]])
+    return '({0!r}, {1}, {2})'.format(t[0], _tag_lut[t[1]], _tag_lut[t[2]])
 
 def typeref_to_defin(Obj):
     if isinstance(Obj._typeref, ASN1RefClassIntern):
-        return 'asn2gort.ASN1RefClassIntern(None, {0!r})'.format(Obj._typeref.ced_path)
+        return 'ASN1RefClassIntern(None, {0!r})'.format(Obj._typeref.ced_path)
     elif hasattr(Obj._typeref, 'called') and \
     Obj._typeref.called[1] in ('TYPE-IDENTIFIER', 'ABSTRACT-SYNTAX'):
         # special process for those types which are injected in all modules by proc.py
@@ -350,25 +308,106 @@ def typeref_to_defin(Obj):
         while objname in GLOBAL.MOD[modname]['_imp_']:
             modname = GLOBAL.MOD[modname]['_imp_'][objname]
         if isinstance(Obj._typeref, ASN1RefType):
-            return 'asn2gort.NewASN1RefType(\"{0}\", \"{1}\")'.format(modname, objname)
+            return 'ASN1RefType((\'{0}\', \'{1}\'))'.format(modname, objname)
         elif isinstance(Obj._typeref, ASN1RefClassField):
-            return 'asn2gort.NewASN1RefClassField(asn2gort.NewASN1RefType(\"{0}\", \"{1}\"), {2})'.format(modname, objname, goarr(Obj._typeref.ced_path))
+            return 'ASN1RefClassField((\'{0}\', \'{1}\'), {2!r})'\
+                    .format(modname, objname, Obj._typeref.ced_path)
         elif isinstance(Obj._typeref, ASN1RefClassValField):
-            return 'asn2gort.ASN1RefClassValField{Ref:asn2gort.NewAsnRefWithMod(\"{0}\", \"{1}\"), Obj:{2}}'.format(modname, objname, goArr(Obj._typeref.ced_path))
+            return 'ASN1RefClassValField((\'{0}\', \'{1}\'), {2!r})'\
+                    .format(modname, objname, Obj._typeref.ced_path)
         elif isinstance(Obj._typeref, ASN1RefChoiceComp):
-            return 'asn2gort.ASN1RefChoiceComp{asn2gort.NewAsnRefWithMod(\"{0}\", \"{1}\"), {2}}'.format(modname, objname, Obj._typeref.ced_path)
+            return 'ASN1RefChoiceComp((\'{0}\', \'{1}\'), {2!r})'\
+                    .format(modname, objname, Obj._typeref.ced_path)
         elif isinstance(Obj._typeref, ASN1RefInstOf):
-            return 'asn2gort.ASN1RefInstOf(\"{0}\", \"{1}\")'.format(modname, objname)
+            return 'ASN1RefInstOf((\'{0}\', \'{1}\'))'.format(modname, objname)
         else:
             assert()
 
 
 class GoGenerator(_Generator):
     """
-    PycrateGenerator generates GO source code to be loaded into the pycrate
+    PycrateGenerator generates Python source code to be loaded into the pycrate
     ASN.1 runtime, located in pycrate_asn1rt
     """
     _impl = 0
+<<<<<<< .mine
+    
+||||||| .r493
+    dparms = ["_mod", "_name", "TYPE", "_ext", "_flag"]
+
+
+    def dumpConstraint(self, i):
+        self.dumpfd.write("Constraint type: {0}\n".format(i["type"]))
+        pass
+
+    def dumpObj(self, indent, i):
+        if hasattr(i, "_name"):
+            if i._name == "ProcedureCode":
+                print("Here")
+        if indent == "":
+            self.dumpfd.write("\n")
+        self.dumpfd.write(indent + "Object ")
+        for a in self.dparms:
+            if hasattr(i, a):
+                self.dumpfd.write("{0}:{1}, ".format(a, getattr(i, a)))
+        self.dumpfd.write("\n")
+
+        if hasattr(i, "_text_def"):
+            if i._text_def != "":
+                self.dumpfd.write(indent + "TEXT:" + i._text_def + "\n")
+
+        indent += "\t"
+        if hasattr(i, "_ref"):
+            if isinstance(i._ref, set):
+                for a in i._ref:
+                    self.dumpfd.write(indent + "Reference: {0}\n".format(a))
+
+        if hasattr(i, "_root") and i.TYPE != "ENUMERATED":
+            if isinstance(i._root, list):
+                for a in i._root:
+                    self.dumpfd.write(indent + "Root: {0}\n".format(a))
+
+        if hasattr(i, "_cont"):
+            if isinstance(i._cont, ASN1Dict):
+                for a in i._cont:
+                    val = i._cont[a]
+                    if isinstance(val, int):
+                        self.dumpfd.write(indent + "Cont: {0} = {1}\n".format(a, val))
+                    else:
+                        self.dumpObj(indent+"\t", val)
+            else:
+                self.dumpObj(indent + "\t", i._cont)
+
+        if hasattr(i, "_const"):
+            for a in i._const:
+                self.dumpfd.write(indent)
+                self.dumpConstraint(a)
+        pass
+
+    def checkBasicType(self, part, structName):
+        if part.TYPE == 'OCTET STRING':
+            ename = name_to_golang(structName, True)
+            self.basicTypes[ename] = "string"
+            return True
+        elif part.TYPE == 'BIT STRING':
+            ename = name_to_golang(structName, True)
+            self.basicTypes[ename] = "[]byte"
+            return True
+        elif part.TYPE == 'PRINTABLESTRING':
+            ename = name_to_golang(structName, True)
+            self.basicTypes[ename] = "[]byte"
+            return True
+        elif part.TYPE == 'INTEGER':
+            pname = name_to_golang(part._name, True)
+            self.basicTypes[pname] = "int64"
+            return True
+        elif part.TYPE == 'OPEN_TYPE':
+            pname = name_to_golang(part._name, True)
+            self.basicTypes[pname] = "interface{}"
+            return True
+        return False
+
+=======
     dparms = ["_name", "_mode", "TYPE", "_ext", "_flag", "_mod"]
 
 
@@ -455,6 +494,7 @@ class GoGenerator(_Generator):
             return True
         return False
 
+>>>>>>> .r495
     def genType(self, modName, structName, part):
         if part.TYPE == 'ENUMERATED':
             self.genConstants(modName, part)
@@ -483,16 +523,102 @@ class GoGenerator(_Generator):
             print("Unhandled {0} {1}\n".format(part._name, part.TYPE))
 
     def gen(self):
+        self.tables = {}
+        self.fieldTypes = {}
         #
-        #pkg = self.dest
+        self.wrl("package {0}\n\n".format(self.pkg))
+        self.wrl('import (')
+        self.wrl('\t. "asn2gort"')
+        self.wrl(')\n\n')
         #
         modlist = []
         #
-        self.asnObject = dict()
-        self.basicTypes = dict()
-        self.dumpfd = None
-        self.currentModule = None
         for mod_name in [mn for mn in GLOBAL.MOD if mn[:1] != '_']:
+<<<<<<< .mine
+||||||| .r493
+            for a in [aa for aa in GLOBAL.MOD[mod_name] if aa[:1] != '_']:
+                if a.lower() in self.asnObject:
+                    print("{0} is already defined".format(a))
+                else:
+                    item = GLOBAL.MOD[mod_name][a]
+                    self.asnObject[a.lower()] = item
+                    if a.lower() == "s1setup":
+                        print("Here")
+
+        for mod_name in [mn for mn in GLOBAL.MOD if mn[:1] != '_']:
+            self.currentModule = mod_name
+            modName = name_to_defin(mod_name).lower()
+            if self.dumpfd != None:
+                self.dumpfd.close()
+            self.dumpfd = open(modName + "_dump.txt","w")
+            #if not os.path.isdir(self.dest + "/" + modName):
+            #    os.mkdir(self.dest + "/" + modName)
+
+            self.dumpfd.write("\n\n***********************************************\nModule {0}\n***********************************************\n".format(modName))
+            constEnums = None
+
+            # Create structs for all containers: CHOICE, SEQ, SET, CLASS
+            asnStructs = GLOBAL.MOD[mod_name]
+            for structName in asnStructs:
+                if structName[:1] == '_':
+                    continue
+                part = asnStructs[structName]
+                if structName == "HandoverRequired":
+                    print("HERE")
+                self.dumpObj("", part)
+
+
+                if self.checkBasicType(part, structName):
+                    continue
+
+                if part.TYPE == 'ENUMERATED':
+                    self.genConstants(modName, part)
+                elif part.TYPE == 'SEQUENCE':
+                    structName = name_to_golang(structName, True)
+                    self.genSequence(structName, part)
+                elif part.TYPE == 'SEQUENCE OF':
+                    structName = name_to_golang(structName, True)
+                    self.genSequenceOf(structName, part)
+                elif part.TYPE == 'CHOICE':
+                    structName = name_to_golang(structName,True)
+                    self.genChoice(structName, part)
+                elif part.TYPE == 'CLASS':
+                    if isinstance(part._val, dict):
+                        structName = name_to_golang(structName,True)
+                        fd = open(self.dest + "/"  + structName + ".go", 'w')
+                        fd.write("package " + self.pkg + "\n\n")
+                        for item in part._val["root"]:
+                            for c in item:
+                                itemName = name_to_golang(c, True)
+                                fd.write("type " + itemName + " struct {\n")
+                                fd.write("\t" + itemName + "\t*" + itemName + "\n")
+                                fd.write("}\n")
+                        fd.close()
+                else:
+                    print("Unhandled {0} {1}\n".format(part._name, part.TYPE))
+
+
+        '''
+                self.fd = open(self.dest + "/basicTypes.go", 'w')
+                self.fd.write("package " + self.pkg + "\n\n")
+                for a in self.basicTypes:
+                    self.fd.write("type {0} {1}\n".format(a, self.basicTypes[a]))
+                self.fd.close()
+        '''
+
+        for mod_name in [mn for mn in GLOBAL.MOD if mn[:1] != '_']:
+            self.open()
+            self.wdl('package ' + self.pkg)
+            self.wdl('// -*- coding: UTF-8 -*-')
+            self.wdl('// Code automatically generated by pycrate_asn1c')
+            self.wdl('')
+            self.wdl('import (')
+            self.wdl('//\t"fmt"')
+            self.wdl('\t"../asn2gort"')
+            self.wdl('//\t"reflect"')   
+            self.wdl(')')
+            self.wdl('')
+=======
             for a in [aa for aa in GLOBAL.MOD[mod_name] if aa[:1] != '_']:
                 if a.lower() in self.asnObject:
                     print("{0} is already defined".format(a))
@@ -549,216 +675,89 @@ class GoGenerator(_Generator):
             self.wdl('//\t"reflect"')   
             self.wdl(')')
             self.wdl('')
+>>>>>>> .r495
             self._mod_name = mod_name
             Mod = GLOBAL.MOD[mod_name]
             pymodname = name_to_defin(mod_name)
             #
-            self.wil('func (p *{0})Init() {{'.format(pymodname))
-            self.wdl('type {0} struct {{'.format(pymodname))
-            self.wdl('\tasn2gort.Asn\n')
-            #
-            self.wil('p.Name = {0}'.format(qrepr(Mod['_name_'])))
-            strr = 'p.Oid = []int{'
-            for x in Mod['_oid_']:
-                strr += '{0}, '.format(x)
-            strr += '}'
-            self.wil(strr)
-            self.wil('p.Tag = "{0}"'.format(_tag_lut[Mod['_tag_']]))
-            for attr in ('_obj_', '_type_', '_set_', '_val_', '_class_', '_param_'):
-                #self.wdl('{0} []string'.format(attr))
-                name = attr[1:]
-                name = name[0].upper() + name[1:]
-                self.wil('p.{0} = []string{{'.format(name))
-                for name in Mod[attr]:
-                    self.wil('"{0}",'.format(name))
-                self.wil('}//388')
-            self.wil('')
-            #
+            self.wrl('// {0}\n'.format(pymodname))
+            self.wrl('')
             self._all_ = []
             self._allobj_ = {}
             self.gen_mod(GLOBAL.MOD[mod_name])
-            strr = 'p.All = []interface{}{'
+            self.wrl('_all_ = [')
             for pyobjname in self._all_:
-                obj = self._allobj_.get(pyobjname)
-                if obj.TYPE != "ENUMERATED":
-                    strr += 'p.{0},'.format(pyobjname)
-            strr += '}'
-            self.wil(str)
+                self.wrl('    {0},'.format(pyobjname))
+            self.wrl(']')
             modlist.append(pymodname)
             #
-            self.wdl('}\n')
-            self.wil('}\n\n')
-            self.save(pymodname)
-
+            self.indent = 0
+            self.wrl('')
+            
+        self.wrl('// Table lookups')
+        self.wrl('func init() {')
+        # All of out tables for lookup
+        for tbl in self.tables:
+            c = self.tables[tbl]
+            root = c['root']
+            idx = c['idx']
+            # Runs through each member of the set
+            for a in root:
+                index = a[idx]
+                # Now we must run through each item
+                # Each item in a set can specify one or more Types, we save these
+                # Each item in a set can specify zero or more values, save these also
+                structRef = {}
+                valRef = {}
+                for b in a:
+                    if b == idx:
+                        continue
+                    x = a[b]
+                    if b[0] >= 'A' and b[0] <='Z':
+                        structRef[b] = x._typeref.called[-1]
+                    else:
+                        valRef[b] = x
+                # Now we can instantiate the Go struct for this lookup with the specified values
+                for x in structRef:
+                    struct = "{0}{{".format(x)
+                    # Add default values
+                    vals = ""
+                    for y in valRef:
+                        vals += "{0}:{1}, ".format(y, valRef[y])
+                    vals += "Value:{0}{{}}".format(structRef[x])
+                    struct += vals + "}"
+                    self.wrl("\tAddTableRef('{0}_{1}', {2}, {3})".format(tbl,  x,  index,  struct))
+        self.wrl('}')
         #
         # create the _IMPL_ class if required
         if self._impl:
-            self.wrl('type _IMPL_ struct {{\n')
-            self.indent = 2
+            self.wrl('class _IMPL_:\n')
+            self.indent = 4
             #
-            #self.wrl('_name_ = \"_IMPL_\""')
-            #self.wrl('_oid_  = []')
-            #self.wrl('_obj_  = {0!r}'.format(GLOBAL.MOD['_IMPL_']['_obj_']))
-            #self.wrl('')
+            self.wrl('_name_ = \'_IMPL_\'')
+            self.wrl('_oid_  = []')
+            self.wrl('_obj_  = {0!r}'.format(GLOBAL.MOD['_IMPL_']['_obj_']))
+            self.wrl('')
             #
             self._all_ = []
             self._allobj_ = {}
             self.gen_mod(GLOBAL.MOD['_IMPL_'])
-            #self.wrl('_all_ = [')
-            #for pyobjname in self._all_:
-            #    self.wrl('    {0},'.format(pyobjname))
-            #self.wrl(']')
+            self.wrl('_all_ = [')
+            for pyobjname in self._all_:
+                self.wrl('    {0},'.format(pyobjname))
+            self.wrl(']')
             modlist.append('_IMPL_')
             #
             self.indent = 0
-            self.wrl('}//424')
             self.wrl('')
         #
-        # Instantiation
-        self.open()
-        self.wil('package ' + self.pkg)
-        self.wil('import "../asn2gort"')
-        self.wil('type _' + self.pkg + ' struct {')
-        for x in modlist:
-          self.wil('\t{0} *{0}'.format(x))        
-        self.wil('}')
-
-        emod = 'Base'+self.pkg
-        self.wil('\nvar ' + emod + " _" + self.pkg)
+        self.wrl('init_modules(' + ', '.join(modlist) + ')')        
     
-        self.wil('\n\nfunc init() {')
-        self.wil('\t' + emod + " = _" + self.pkg + "{}")
-        for x in modlist:
-          self.wil('\t{0}.{1} = &{1}{{}}'.format(emod,x))
-          self.wil('\t{0}.{1}.Init()'.format(emod,x))
-          self.wil('\tasn2gort.InitModule("{0}",{1}.{0})'.format(x,emod))        
-        self.wil('}')
-        self.save("Init")
-
-    def genConstants(self, modName, part):
-        if os.path.isdir(self.dest + "/" + modName):
-            fd = open(self.dest + "/" + modName + "/consts.go", "a")
-        else:
-            os.mkdir(self.dest + "/" + modName)
-            fd = open(self.dest + "/" + modName + "/consts.go", "w")
-            fd.write("package " + modName + "\n\n")
-        fd.write("const (\n")
-        for c in part._cont:
-            val = str(part._cont[c])
-            fd.write("\t" + name_to_golang(c, True) + "\tint = " + val + "\n")
-        fd.write(")\n")
-        fd.close()
-
-    def genChoice(self, structName, part):
-        fd = open(self.dest + "/" + structName + ".go", 'w')
-        fd.write('''
-package {0}
-import "asn2gort"
-// {1}
-type {2} struct {{
-    Choice  interface{{}}
-}}
-
-// Decode specified struct
-func (s *{2})Decode(per *asn2gort.PERDecoder) error {{
-  choiceIdx = per.GetUintVal({3})
-}}
-
-// Encode specified struct
-func (s *{2})Encode(per *asn2gort.PEREncoder) error {{
-}}
-        '''.format(self.pkg, part._text_def, structName, self.minBits(len(part._root))))
-        fd.close()
-
-    def getObject(self, name):
-        if name.lower() in self.asnObject:
-            return self.asnObject[name.lower()]
-        else:
-            print("getObject failed for name {0} lookup in module {1}\n".format(name, self.currentModule))
-            return None
-
-    def addDecoder(self, fd, name, item):
-        if item.TYPE == 'INTEGER':
-            obj = self.getObject(name)
-            # Is there a constraint
-            if hasattr(obj, '_const'):
-                if isinstance(obj._const, list):
-                    if len(obj._const) > 0:
-                        c = obj._const[0]
-                        if isinstance(c['root'][0], ASN1RangeInt):
-                            range = c['root'][0]
-                            bits = self.minBits(range.ub - range.lb + 1)
-                            fd.write("  if err := per.GetUintVal({1}, s.{0}); err {{ return err }}\n".format(name, bits))
-                            return
-            else:
-                fd.write("  if err := per.GetIntVal(s.{0}); err {{ return err }}\n".format(name))
-        if item.TYPE == 'OPEN TYPE':
-            fd.write("  // TODO Open type {0}\n".format(name))
-        else:
-            fd.write("  // {0} Type {1}\n".format(name, item.TYPE))
-            fd.write("  if err := s.{0}.Decode(per); err {{ return err }}\n".format(name))
-
-
-    def genSequenceOf(self, structName, part):
-        fd = open(self.dest + "/" + structName + ".go", 'w')
-        fd.write("package " + self.pkg + "\n\n")
-        fd.write("import \"asn2gort\"\n\n")
-        fd.write("// " + part._text_def + "\n")
-        fd.write("type " + structName + " struct {\n")
-        fd.write("\t// To do add type of SET OF\n")
-        fd.write("}\n\n")
-        fd.write("// Decode specified struct\n")
-        fd.write("func (s *" + structName + ")Decode(per *asn2gort.PERDecoder) error {\n")
-        fd.write("\t// To do add type of SET OF\n")
-        fd.write("  return nil\n")
-        fd.write("}\n\n")
-        fd.write("// Encode specified struct\n")
-        fd.write("func (s *" + structName + ")Encode(per *asn2gort.PEREncoder) error {\n")
-        fd.write("\t// To do add type of SET OF\n")
-        fd.write("  return nil\n")
-        fd.write("}\n")
-        fd.close()
-
-
-    def genSequence(self, structName, part):
-        fd = open(self.dest + "/" + structName + ".go", 'w')
-        fd.write("package " + self.pkg + "\n\n")
-        fd.write("import \"asn2gort\"\n\n")
-        fd.write("// " + part._text_def + "\n")
-        fd.write("type " + structName + " struct {\n")
-        for c in part._cont:
-            item = part._cont[c]
-            itemName = name_to_golang(c, True)
-            if self.checkBasicType(item, structName):
-                continue
-            if item.TYPE == "ENUMERATED":
-                fd.write("\t" + itemName + "\tint\t// " + item._text_def + "\n")
-            else:
-                fd.write("\t{0}\t*{0}\t// {1} {2}\n".format(itemName, part._mod, item._text_def))
-        fd.write("}\n\n")
-        fd.write("// Decode specified struct\n")
-        fd.write("func (s *" + structName + ")Decode(per *asn2gort.PERDecoder) error {\n")
-        for c in part._cont:
-            item = part._cont[c]
-            itemName = name_to_golang(c, True)
-            self.addDecoder(fd, itemName, item)
-        fd.write("  return nil\n")
-        fd.write("}\n\n")
-        fd.write("// Encode specified struct\n")
-        fd.write("func (s *" + structName + ")Encode(per *asn2gort.PEREncoder) error {\n")
-        for c in part._cont:
-            item = part._cont[c]
-            itemName = name_to_golang(c, True)
-            fd.write("  if err := s.{0}.Encode(per); err {{ return err }}\n".format(itemName))
-        fd.write("  return nil\n")
-        fd.write("}\n")
-        fd.close()
-
     def gen_mod(self, Mod):
         obj_names = [obj_name for obj_name in Mod.keys() if obj_name[0:1] != '_']
         for obj_name in obj_names:
             Obj = Mod[obj_name]
-            self.wdl('//-----< {0} >-----'.format(Obj._name))
+            self.wrl('//-----< {0} >-----#'.format(Obj._name))
             if Obj._mode == MODE_TYPE:
                 self.gen_type(Obj)
             elif Obj._mode == MODE_SET:
@@ -768,14 +767,8 @@ func (s *{2})Encode(per *asn2gort.PEREncoder) error {{
             # delete potential table constraints caches
             if hasattr(self, '_const_tabs'):
                 del self._const_tabs
-            self.wdl('')
-
-    def minBits(self, val):
-        a = math.log(val) / math.log(2)
-        if (a-int(a)) == 0:
-            return a
-        return int(a+1)
-
+            self.wrl('')
+    
     def _handle_dup(self, Obj):
         if Obj._pyname in self._all_:
             # a similar object was already generated (this is mainly due to a 
@@ -810,10 +803,12 @@ func (s *{2})Encode(per *asn2gort.PEREncoder) error {{
             return False
     
     def gen_type(self, Obj, compts=False):
+        if Obj.TYPE == "CLASS":
+            return
         #
         # 1) create a python-compliant name if not already done
         if not hasattr(Obj, '_pyname'):
-            Obj._pyname = name_to_defin(Obj._name)
+            Obj._pyname = name_to_golang(Obj._name,  True)
         #
         # 2) check to not duplicate object
         if self._handle_dup(Obj):
@@ -834,18 +829,11 @@ func (s *{2})Encode(per *asn2gort.PEREncoder) error {{
             self._allobj_[InstSeq._pyname] = InstSeq
             return
         #
-        # 4) initialize the object Python instance
-        # Skip Enums
-        if Obj.TYPE != "ENUMERATED":
-            if Obj._mode == "VALUE" and Obj._val != None:
-                self.wdl('\t{0} int'.format(Obj._pyname))
-            else:
-                self.wdl('{0}\t*asn2gort.Asn{1}'.format(Obj._pyname, Obj.__class__.__name__))
-                self.wil('p.{0} = &asn2gort.Asn{1}{{{2}}}'.format(Obj._pyname,
-                                                 Obj.__class__.__name__,
-                                                 self._gen_type_init_attr(Obj, compts)))
-        else:
-            self.wdl('{0}\t*asn2gort.Asn{1}'.format(Obj._pyname, Obj.__class__.__name__))
+        # 4) create Go struct to represent
+        #if Obj._root != None:
+        #   if len(Obj._root) == 1:
+        #        self.wrl("// Single field")
+        #self.wrl('type {0} struct {{\n //{1}\n}}\n\n'.format(Obj._pyname,  Obj._root))
         #
         # 5) check if the _IMPL_ module is required
         if Obj._typeref and isinstance(Obj._typeref.called, tuple) and \
@@ -888,6 +876,8 @@ func (s *{2})Encode(per *asn2gort.PEREncoder) error {{
         self._allobj_[Obj._pyname] = Obj
     
     def gen_set(self, Obj):
+        if Obj.TYPE == "CLASS":
+            return
         #
         # generate the type first
         self.gen_type(Obj, compts=False)
@@ -897,10 +887,11 @@ func (s *{2})Encode(per *asn2gort.PEREncoder) error {{
             return
         #
         # now generate the set of values
-        s = 'p.{0} = {1}'.format(Obj._pyname, set_to_defin(ASN1Set(Obj._val), Obj, self))
-        self.wil(s)
+        self.wrl('{0}._val = {1}'.format(Obj._pyname, set_to_defin(ASN1Set(Obj._val), Obj, self)))
     
     def gen_val(self, Obj):
+        if Obj.TYPE == "CLASS":
+            return
         #
         # generate the type first
         self.gen_type(Obj, compts=False)
@@ -910,46 +901,29 @@ func (s *{2})Encode(per *asn2gort.PEREncoder) error {{
             return
         #
         # now generate the set of values
-        s = '[]ASN1Ref{'
-        v = value_to_defin(Obj._val, Obj, self)
-        if isinstance(v, str):
-            if Obj.TYPE == 'INTEGER':
-                if Obj._val != None:
-                    self.wil('p.{0} = {1}'.format(Obj._pyname, v))
-                else:
-                    self.wil('p.{0}.Val = {1}'.format(Obj._pyname, v))
-                return
-            else:
-                s += 'NewASN1Ref({0}),'.format(v)
-        else:
-            for y in v:
-              if len(y)==2:
-                s += 'NewASN1RefWithMod({0}, {1}),'.format(y[0], y[1])
-              else:
-                s += 'NewASN1Ref({0}),'.format(y[0])
-
-        s += '}'
-        s = 'p.{0}.A_val = {1}'.format(Obj._pyname, s)
-        self.wil(s)
+        self.wrl('{0}._val = {1}'.format(Obj._pyname, value_to_defin(Obj._val, Obj, self)))
     
     def _gen_type_init_attr(self, Obj, compts):
-        attr = ['Name:"{0}"'.format(Obj._name),
-                'Mode:"{0}"'.format(_mode_lut[Obj._mode])]
+        # CLASSes do not result in acutal Go code
+        if Obj.TYPE == "CLASS":
+            return
+        attr = ['name={0}'.format(repr(Obj._name)),
+                'mode={0}'.format(_mode_lut[Obj._mode])]
         # WNG: tag or typeref at the root of the object definition could be parameterized too
         if Obj._tag and isinstance(Obj._tag[0], integer_types):
-            attr.append('Tag:"{0}"'.format(tag_to_defin(Obj._tag)))
+            attr.append('tag={0}'.format(tag_to_defin(Obj._tag)))
         if Obj._typeref and isinstance(Obj._typeref.called, tuple):
-            attr.append('Typeref:{0}'.format(typeref_to_defin(Obj)))
+            attr.append('typeref={0}'.format(typeref_to_defin(Obj)))
         if Obj._param:
-            attr.append('Param:true')
+            attr.append('param=True')
         if compts:
             # this is for constructed objects components only
             if Obj._flag and FLAG_OPT in Obj._flag:
-                attr.append('Opt:true')
+                attr.append('opt=True')
             elif Obj._flag and FLAG_DEF in Obj._flag:
                 if Obj._mode == MODE_SET:
                     # this can happen with CLASS fields
-                    attr.append('Default:{0}'.format(set_to_defin(ASN1Set(Obj._flag[FLAG_DEF]), Obj, self)))
+                    attr.append('default={0}'.format(set_to_defin(ASN1Set(Obj._flag[FLAG_DEF]), Obj, self)))
                 else:
                     if Obj._mode == MODE_TYPE:
                         par = Obj._parent
@@ -957,15 +931,18 @@ func (s *{2})Encode(per *asn2gort.PEREncoder) error {{
                             if par.TYPE == TYPE_CLASS:
                                 assert()
                             par = par._parent
-                    attr.append('Default:{0}'.format(value_to_defin(Obj._flag[FLAG_DEF], Obj, self)))
+                    attr.append('default={0}'.format(value_to_defin(Obj._flag[FLAG_DEF], Obj, self)))
             if Obj.TYPE == TYPE_ANY and Obj._flag and FLAG_DEFBY in Obj._flag:
-                attr.append('Defby:{0!r}'.format(Obj._flag[FLAG_DEFBY]))
+                attr.append('defby={0!r}'.format(Obj._flag[FLAG_DEFBY]))
             if Obj._flag and FLAG_UNIQ in Obj._flag:
-                attr.append('Uniq:true')
+                attr.append('uniq=True')
             if Obj._group is not None:
-                attr.append('Group:{0!r}'.format(Obj._group))
-        return 'Asn:asn2gort.Asn{' + ', '.join(attr) + '}'
+                attr.append('group={0!r}'.format(Obj._group))
+        return ', '.join(attr)
     
+    def commentCode(self, o ):
+        self.wrl("/*\n{0}\n*/".format(o._text_def))
+        
     #--------------------------------------------------------------------------#
     # specific types
     #--------------------------------------------------------------------------#
@@ -977,15 +954,8 @@ func (s *{2})Encode(per *asn2gort.PEREncoder) error {{
     def gen_type_int(self, Obj):
         # named integer values
         if Obj._cont:
-            #self.wdl('type {0} int'.format(Obj._pyname))
             # Cont is an ASN1Dict with {str: int}
-            self.wil('p.{0}.Children = asn2gort.NewDict()'.format(Obj._pyname))
-            for a in Obj._cont.items():
-                  r = extract_charstr(Obj._pyname)[0]
-                  #self.wdl('const {0} {1} = {2}'.format(a[0],r,a[1]))
-                  self.wil('// Integer value {0}.{1} = {2}'.format(Obj._pyname, r,a[1]))
-                  self.wil('p.{0}.Children.Add({1}, &AsnINT{{ Val:{2} }})'.format(r, qrepr(a[0]), a[1]))
-            #self.wil('{0}._cont = ASN1Dict({1!r})'.format(Obj._pyname, list(Obj._cont.items())))
+            self.wrl('{0}._cont = ASN1Dict({1!r})'.format(Obj._pyname, list(Obj._cont.items())))
         # value constraint
         self.gen_const_val(Obj)
     
@@ -996,38 +966,15 @@ func (s *{2})Encode(per *asn2gort.PEREncoder) error {{
     
     def gen_type_enum(self, Obj):
         # enum content
-        #self.wdl('type {0} int'.format(Obj._pyname))
-        #self.wdl('const (')
         if Obj._cont:
-            self.wil('var {0} = struct {{'.format(Obj._pyname))
+            s = ""
             for a in Obj._cont.items():
-                  r = extract_charstr(a[0])[0]
-                  #self.wdl('\t{0} {1} = {2}'.format(a[0], Obj._pyname, a[1]))
-                  #self.wil('// ENUM {0}.{1} = {2}'.format(Obj._pyname, r,a[1]))
-                  #self.wil('p.{0}.Children.Add("{1}", NewAsnENUM({2}))'.format(Obj._pyname, r,a[1]))
-                  self.wil('\t{0} int'.format(name_to_golang_exported(r)))
-            #self.wil('{0}._cont = ASN1Dict({1!r})'.format(Obj._pyname, list(Obj._cont.items())))
-            self.wil('}{')
-            for a in Obj._cont.items():
-                  r = extract_charstr(a[0])[0]
-                  #self.wdl('\t{0} {1} = {2}'.format(a[0], Obj._pyname, a[1]))
-                  #self.wil('// ENUM {0}.{1} = {2}'.format(Obj._pyname, r,a[1]))
-                  #self.wil('p.{0}.Children.Add("{1}", NewAsnENUM({2}))'.format(Obj._pyname, r,a[1]))
-                  self.wil('\t{0}, // ENUM {1}.{2} = {0}'.format(a[1],Obj._pyname, r))
-            #self.wil('{0}._cont = ASN1Dict({1!r})'.format(Obj._pyname, list(Obj._cont.items())))
-            self.wil('}')
-            if Obj._type != "ENUMERATED":
-                    if Obj._ext is None:
-                        self.wil('p.{0}.ExtFlag = false'.format(Obj._pyname))
-                        pass
-                    else:
-                        self.wil('p.{0}.ExtFlag = true'.format(Obj._pyname))
-                        if len(Obj._ext) > 0:
-                          s = 'p.{0}.Ext = []string{{'.format(Obj._pyname)
-                          for x in Obj._ext:
-                            s += '{0},'.format(qrepr(x))
-                          s += "}"
-                          self.wil(s)
+                if s != "":
+                  s += ","
+                s +=name_to_golang(a[0],  True)
+            self.wrl('//*{1} int64 `enum:"{0}"` // {1}'.format(s,  Obj._pyname))
+            #if Obj._ext is not None:
+            #    self.wrl('{0}._ext = {1!r}'.format(Obj._pyname, Obj._ext))
         # value constraint
         self.gen_const_val(Obj)
     
@@ -1035,12 +982,7 @@ func (s *{2})Encode(per *asn2gort.PEREncoder) error {{
         # content: named bit offsets
         if Obj._cont:
             # Cont is an ASN1Dict with {str: int}
-            self.wil('p.{0}.Children = asn2gort.NewDict()'.format(Obj._pyname))
-            for a in Obj._cont.items():
-                  r = extract_charstr(a[0])[0]
-                  self.wil('// Bitstring {0}.{1}'.format(Obj._pyname, r))
-                  self.wil('p.{0}.Children.Add("{1}",{2})'.format(Obj._pyname, r))
-            #self.wil('{0}._cont = ASN1Dict({1!r})'.format(Obj._pyname, list(Obj._cont.items())))
+            self.wrl('{0}._cont = ASN1Dict({1!r})'.format(Obj._pyname, list(Obj._cont.items())))
         # value constraint
         self.gen_const_val(Obj)
         # size constraint
@@ -1069,7 +1011,7 @@ func (s *{2})Encode(per *asn2gort.PEREncoder) error {{
         Consts_alpha = [C for C in Obj.get_const() if C['type'] == CONST_ALPHABET]
         if Consts_alpha:
             Salpha = reduce_setdicts(Consts_alpha)
-            self.wrl('p.{0}._const_alpha = {1}'.format(Obj._pyname, set_to_defin(Salpha, Obj, self)))
+            self.wrl('{0}._const_alpha = {1}'.format(Obj._pyname, set_to_defin(Salpha, Obj, self)))
     
     def gen_type_time(self, Obj):
         # value constraint
@@ -1083,31 +1025,25 @@ func (s *{2})Encode(per *asn2gort.PEREncoder) error {{
             links = ASN1Dict()
             for name in Obj._cont:
                 Cont = Obj._cont[name]
-                Cont._pyname = '_{0}_{1}'.format(Obj._pyname, name_to_defin(Cont._name))
+                # Choices have pointers to types
+                Cont._pyname = '*{0}'.format(name_to_golang(name,  True))
                 self.gen_type(Cont, compts=True)
                 links[name] = Cont._pyname
-            self.wil('p.{0}.Children = asn2gort.NewDict()'.format(Obj._pyname))
             # now link all of them in an ASN1Dict into the Obj content
-            for a in links:
-                  self.wil('// CHOICE {0}.{1} = {2}'.format(Obj._pyname, qrepr(a), links[a]))
-                  self.wil('p.{0}.Children.Add({1},p.{2})'.format(Obj._pyname, qrepr(a), links[a]))
-            #self.wil('{0}._cont = ASN1Dict(['.format(Obj._pyname))
-            #for name in links:
-            #    self.wil('    ({0!r}, {1}),'.format(name, links[name]))
-            #self.wil('    ])')
+            self.commentCode(Obj)
+            self.wrl('type {0} struct {{\n\tAsnCHOICE'.format(Obj._pyname))
+            extension = False
+            for name in links:
+                l = links[name]
+                if Obj._ext is not None:
+                    if name in Obj._ext and not extension:
+                        self.wrl("\tAsnEXTENSION // {0}".format(name))
+                        extension = True
+                self.wrl('\t{0} {1} // {2}'.format(name_to_golang(name, True), l, l ))
             # extension
-            if Obj._type != "ENUMERATED":
-                if Obj._ext is None:
-                    self.wil('p.{0}.ExtFlag = false'.format(Obj._pyname))
-                    pass
-                else:
-                    self.wil('p.{0}.ExtFlag = true'.format(Obj._pyname))
-                    if len(Obj._ext) > 0:
-                      s = 'p.{0}.Ext = []string{{'.format(Obj._pyname)
-                      for x in Obj._ext:
-                        s += '{0},'.format(qrepr(x))
-                      s += "}"
-                      self.wil(s)
+            if Obj._ext is not None and not extension:
+                self.wrl('\tAsnEXTENSION')
+            self.wrl('}\n')
         # value constraint
         self.gen_const_val(Obj)
     
@@ -1116,6 +1052,8 @@ func (s *{2})Encode(per *asn2gort.PEREncoder) error {{
         if Obj._cont is not None:
             # TODO: apply CONST_COMPS if exists
             # create all objects of the content first
+            self.commentCode(Obj)
+            self.wrl('type {0} struct {{\n\tAsn'.format(Obj._pyname))
             links = ASN1Dict()
             for name in Obj._cont:
                 Cont = Obj._cont[name]
@@ -1123,23 +1061,18 @@ func (s *{2})Encode(per *asn2gort.PEREncoder) error {{
                 self.gen_type(Cont, compts=True)
                 links[name] = Cont._pyname
             # now link all of them in an ASN1Dict into the Obj content
-            self.wil('p.{0}.Children = asn2gort.NewDict()'.format(Obj._pyname))
+            extension = False
             for name in links:
-                self.wil('// ASNDICT {0}.{1} = {2}'.format(Obj._pyname, name, links[name]))
-                self.wil('p.{0}.Children.Add("{1}", p.{2})'.format(Obj._pyname, name, links[name]))
+                l = links[name]
+                if Obj._ext is not None:
+                    if name in Obj._ext and not extension:
+                        self.wrl("\tAsnEXTENSION //{0}".format(name))
+                        extension = True
+                self.wrl('\t{0} {1} //{2}'.format(name_to_golang(name, True), l, l ))
             # extension
-            if Obj._type != "ENUMERATED":
-                if Obj._ext is None:
-                    self.wil('p.{0}.ExtFlag = false'.format(Obj._pyname))
-                    pass
-                else:
-                    self.wil('p.{0}.ExtFlag = true'.format(Obj._pyname))
-                    if len(Obj._ext) > 0:
-                      s = 'p.{0}.Ext = []string{{'.format(Obj._pyname)
-                      for x in Obj._ext:
-                        s += '{0},'.format(qrepr(x))
-                      s += "}"
-                      self.wil(s)
+            if Obj._ext is not None and not extension:
+                self.wrl('\tAsnEXTENSION')
+            self.wrl('}\n')
         # value constraint
         self.gen_const_val(Obj)
     
@@ -1152,9 +1085,7 @@ func (s *{2})Encode(per *asn2gort.PEREncoder) error {{
             Cont._pyname = '_{0}_{1}'.format(Obj._pyname, name_to_defin(Cont._name))
             self.gen_type(Cont)
             # now link it to the Obj content
-            self.wil('p.{0}.Children = asn2gort.NewDict()'.format(Obj._pyname))
-            self.wil('// SEQ OF {0}.{1} = {2}'.format(Obj._pyname,  qrepr(Cont._pyname),Cont._pyname))
-            self.wil('p.{0}.Children.Add({1}, p.{2})'.format(Obj._pyname, qrepr(Cont._pyname),Cont._pyname))
+            self.wrl('{0}._cont = {1}'.format(Obj._pyname, Cont._pyname))
         # value constraint
         self.gen_const_val(Obj)
         # size constraint
@@ -1171,11 +1102,10 @@ func (s *{2})Encode(per *asn2gort.PEREncoder) error {{
                 self.gen_type(Cont, compts=True)
                 links[name] = Cont._pyname
             # now link all of them in an ASN1Dict into the Obj content
-            #self.wil('{0}._cont = ASN1Dict(['.format(Obj._pyname))
-            self.wil('p.{0}.Children = asn2gort.NewDict()'.format(Obj._pyname))
+            self.wrl('{0}._cont = ASN1Dict(['.format(Obj._pyname))
             for name in links:
-                self.wil('// CLASS {0}.{1} = {2}'.format(Obj._pyname, qrepr(name), links[name]))
-                self.wil('p.{0}.Children.Add({1}, p.{2})'.format(Obj._pyname, qrepr(name), links[name]))
+                self.wrl('    ({0!r}, {1}),'.format(name, links[name]))
+            self.wrl('    ])')
     
     def gen_type_open(self, Obj):
         if Obj._cont:
@@ -1211,7 +1141,7 @@ func (s *{2})Encode(per *asn2gort.PEREncoder) error {{
             else:
                 ext = 'None'
             # creates the ASN1Set which links to the object
-            self.wrl('p.{0}.A_const_val = asn2gort.ASN1Set(rv={1}, ev={2})'.format(Obj._pyname, root, ext))
+            self.wrl('{0}._const_val = ASN1Set(rv={1}, ev={2})'.format(Obj._pyname, root, ext))
         if [C for C in Obj.get_const() if C['type'] not in \
         (CONST_TABLE, CONST_VAL, CONST_CONSTRAIN_BY)]:
             assert()
@@ -1249,7 +1179,7 @@ func (s *{2})Encode(per *asn2gort.PEREncoder) error {{
             for er in Ssz._er:
                 if er.lb is None:
                     er.lb = 0
-            self.wil('p.{0}.A_const_sz = {1}'.format(Obj._pyname, set_to_defin(Ssz, SzProxy, self)))
+            self.wrl('{0}._const_sz = {1}'.format(Obj._pyname, set_to_defin(Ssz, SzProxy, self)))
     
     def gen_const_val(self, Obj):
         # if no local value constraint, just return
@@ -1259,8 +1189,8 @@ func (s *{2})Encode(per *asn2gort.PEREncoder) error {{
         Consts_val = [C for C in Obj.get_const() if C['type'] == CONST_VAL]
         if Consts_val:
             Sval = reduce_setdicts(Consts_val)
-            self.wil('p.{0}.A_const_val = {1}'.format(Obj._pyname, set_to_defin(Sval, Obj, self)))
-
+            self.wrl('{0}._const_val = {1}'.format(Obj._pyname, set_to_defin(Sval, Obj, self)))
+    
     def gen_const_table(self, Obj):
         # table constraint: processing only a local and single constraint
         Consts_tab = [C for C in Obj._const if C['type'] == CONST_TABLE]
@@ -1269,6 +1199,18 @@ func (s *{2})Encode(per *asn2gort.PEREncoder) error {{
                 asnlog('WNG, {0}.{1}: multiple table constraint, but compiling only the first'\
                        .format(self._mod_name, Obj._name))
             Const = Consts_tab[0]
+            # If the table lookup has not been saved, save it 
+            indexName = Obj._typeref.ced_path[-1]
+            table = Obj._typeref.called[-1]
+            root = C['tab']['val']['root']
+            ext = C['tab']['val']['ext']
+            if table not in self.tables:
+                tbl = {}
+                tbl['name'] = table
+                tbl['idx'] = indexName
+                tbl["root"] =root
+                tbl['ext'] = ext
+                self.tables[table] = tbl            
             #ConstTab = Const['tab']
             link_name = None
             # check if the same constraint was already defined somewhere in the root object
@@ -1290,20 +1232,30 @@ func (s *{2})Encode(per *asn2gort.PEREncoder) error {{
                 else:
                     self._const_tabs.append( (link_name, Const['tab'].get_val()) )
             # now link it to the Obj constraint
-            self.wil('p.{0}.A_const_tab = p.{1}'.format(Obj._pyname, link_name))
-            # define the @ identifier
-            if Const['at'] is None:
-                self.wil('p.{0}.A_const_tab_at = nil'.format(Obj._pyname))
+            constraint = Obj.get_const()
+            range = None
+            if constraint[-1]['type'] == 'VAL':
+                range = constraint[-1]['text']
+            # self.wrl('{0}._const_tab = {1}'.format(Obj._pyname, link_name))
+            tbl = self.tables[table]
+            # Is this the index?
+            fieldName = Obj._typeref.ced_path[-1]
+            if tbl['idx'] == fieldName:
+                self.wrl('\t{0} int64  `table:"{1}" range:"{2}"`'.format(name_to_golang(fieldName, True),  table,  range))
             else:
-#                self.wil('{0}._const_tab_at = ASN1Ref{{"{1}","{2}"}}'.format(Obj._pyname, tuple(Const['at'])))
-                self.wil('p.{0}.A_const_tab_at = asn2gort.NewASN1RefWithMod("{1}","{2}")'.format(Obj._pyname, Const['at'][0],Const['at'][1]))
-             # define the table object identifier
-            try:
-                self.wil('p.{0}.A_const_tab_id = {1}'.format(Obj._pyname, qrepr(Obj._typeref.ced_path[-1])))
-            except:
-                asnlog('WNG, {0}.{1}: unavailable table constraint ident, not compiling it'\
-                       .format(self._mod_name, Obj._name))
-                self.wil('p.{0}.A_const_tab_id = nil')
+                self.wrl('\t{0} //={1}"`'.format(name_to_golang(fieldName, True), Obj._pyname))
+            # define the @ identifier
+            #if Const['at'] is None:
+            #   self.wrl('{0}._const_tab_at = None'.format(Obj._pyname))
+            #else:
+            #    self.wrl('{0}._const_tab_at = {1!r}'.format(Obj._pyname, tuple(Const['at'])))
+            # define the table object identifier
+            #try:
+            #    self.wrl('//{0}._const_tab_id = {1}'.format(Obj._pyname, repr(Obj._typeref.ced_path[-1])))
+            #except:
+            #    asnlog('WNG, {0}.{1}: unavailable table constraint ident, not compiling it'\
+            #           .format(self._mod_name, Obj._name))
+            #    self.wrl('{0}._const_tab_id = None')
     
     def gen_const_contain(self, Obj):
         # CONTAINING constraint: processing only a local and single constraint
@@ -1316,12 +1268,11 @@ func (s *{2})Encode(per *asn2gort.PEREncoder) error {{
             if Const['enc'] is not None:
                 # Const['enc'] is an OID value
                 EncProxy = OID()
-                self.wrl('p.{0}._const_cont_enc = {1}'\
+                self.wrl('{0}._const_cont_enc = {1}'\
                          .format(Obj._pyname, value_to_defin(Const['enc'], EncProxy, self)))
             else:
                 # create the contained object first
                 Const['obj']._pyname = '_{0}_contain'.format(Obj._pyname)
                 self.gen_type(Const['obj'])
                 # now link it to the Obj constraint
-                self.wrl('p.{0}._const_cont = {1}'.format(Obj._pyname, Const['obj']._pyname))
-
+                self.wrl('{0}._const_cont = {1}'.format(Obj._pyname, Const['obj']._pyname))
