@@ -330,171 +330,6 @@ class GoGenerator(_Generator):
     ASN.1 runtime, located in pycrate_asn1rt
     """
     _impl = 0
-<<<<<<< .mine
-    
-||||||| .r493
-    dparms = ["_mod", "_name", "TYPE", "_ext", "_flag"]
-
-
-    def dumpConstraint(self, i):
-        self.dumpfd.write("Constraint type: {0}\n".format(i["type"]))
-        pass
-
-    def dumpObj(self, indent, i):
-        if hasattr(i, "_name"):
-            if i._name == "ProcedureCode":
-                print("Here")
-        if indent == "":
-            self.dumpfd.write("\n")
-        self.dumpfd.write(indent + "Object ")
-        for a in self.dparms:
-            if hasattr(i, a):
-                self.dumpfd.write("{0}:{1}, ".format(a, getattr(i, a)))
-        self.dumpfd.write("\n")
-
-        if hasattr(i, "_text_def"):
-            if i._text_def != "":
-                self.dumpfd.write(indent + "TEXT:" + i._text_def + "\n")
-
-        indent += "\t"
-        if hasattr(i, "_ref"):
-            if isinstance(i._ref, set):
-                for a in i._ref:
-                    self.dumpfd.write(indent + "Reference: {0}\n".format(a))
-
-        if hasattr(i, "_root") and i.TYPE != "ENUMERATED":
-            if isinstance(i._root, list):
-                for a in i._root:
-                    self.dumpfd.write(indent + "Root: {0}\n".format(a))
-
-        if hasattr(i, "_cont"):
-            if isinstance(i._cont, ASN1Dict):
-                for a in i._cont:
-                    val = i._cont[a]
-                    if isinstance(val, int):
-                        self.dumpfd.write(indent + "Cont: {0} = {1}\n".format(a, val))
-                    else:
-                        self.dumpObj(indent+"\t", val)
-            else:
-                self.dumpObj(indent + "\t", i._cont)
-
-        if hasattr(i, "_const"):
-            for a in i._const:
-                self.dumpfd.write(indent)
-                self.dumpConstraint(a)
-        pass
-
-    def checkBasicType(self, part, structName):
-        if part.TYPE == 'OCTET STRING':
-            ename = name_to_golang(structName, True)
-            self.basicTypes[ename] = "string"
-            return True
-        elif part.TYPE == 'BIT STRING':
-            ename = name_to_golang(structName, True)
-            self.basicTypes[ename] = "[]byte"
-            return True
-        elif part.TYPE == 'PRINTABLESTRING':
-            ename = name_to_golang(structName, True)
-            self.basicTypes[ename] = "[]byte"
-            return True
-        elif part.TYPE == 'INTEGER':
-            pname = name_to_golang(part._name, True)
-            self.basicTypes[pname] = "int64"
-            return True
-        elif part.TYPE == 'OPEN_TYPE':
-            pname = name_to_golang(part._name, True)
-            self.basicTypes[pname] = "interface{}"
-            return True
-        return False
-
-=======
-    dparms = ["_name", "_mode", "TYPE", "_ext", "_flag", "_mod"]
-
-
-    def dumpConstraint(self, i):
-        at = "{none}"
-        if 'at' in i:
-            at = i['at']
-        self.dumpfd.write("Constraint type: {0}, Key: {1}\n".format(i["type"], at))
-        pass
-
-    def dumpObj(self, indent, i):
-        if hasattr(i, "_name"):
-            if i._name == "HandoverRequired":
-                print("Here")
-        if indent == "":
-            self.dumpfd.write("\n")
-        self.dumpfd.write(indent + "Object ")
-        for a in self.dparms:
-            if hasattr(i, a):
-                self.dumpfd.write("{0}:{1}, ".format(a, getattr(i, a)))
-        self.dumpfd.write("\n")
-
-        if hasattr(i, "_text_def"):
-            if i._text_def != "":
-                self.dumpfd.write(indent + "TEXT:" + i._text_def + "\n")
-
-        indent += "\t"
-        if hasattr(i, "_ref"):
-            if isinstance(i._ref, set):
-                for a in i._ref:
-                    self.dumpfd.write(indent + "Reference: {0}\n".format(a))
-
-        if hasattr(i, "_root") and i.TYPE != "ENUMERATED":
-            if isinstance(i._root, list):
-                for a in i._root:
-                    self.dumpfd.write(indent + "Root: {0}\n".format(a))
-
-        if hasattr(i, "_cont"):
-            if isinstance(i._cont, ASN1Dict):
-                for a in i._cont:
-                    val = i._cont[a]
-                    if isinstance(val, int):
-                        self.dumpfd.write(indent + "Cont: {0} = {1}\n".format(a, val))
-                    else:
-                        self.dumpObj(indent+"\t", val)
-            else:
-                self.dumpObj(indent + "\t", i._cont)
-
-        if hasattr(i, "_val"):
-            if isinstance(i._val, dict):
-                if i._val['root']:
-                    if isinstance(i._val['root'], list):
-                        for a in i._val['root']:
-                            self.dumpfd.write(indent + "\tVal: {0}\n".format(str(a).replace('\n','')))
-                else:
-                    pass
-
-        if hasattr(i, "_const"):
-            for a in i._const:
-                self.dumpfd.write(indent)
-                self.dumpConstraint(a)
-        pass
-
-    def checkBasicType(self, part, structName):
-        if part.TYPE == 'OCTET STRING':
-            ename = name_to_golang(structName, True)
-            self.basicTypes[ename] = "string"
-            return True
-        elif part.TYPE == 'BIT STRING':
-            ename = name_to_golang(structName, True)
-            self.basicTypes[ename] = "[]byte"
-            return True
-        elif part.TYPE == 'PRINTABLESTRING':
-            ename = name_to_golang(structName, True)
-            self.basicTypes[ename] = "[]byte"
-            return True
-        elif part.TYPE == 'INTEGER':
-            pname = name_to_golang(part._name, True)
-            self.basicTypes[pname] = "int64"
-            return True
-        elif part.TYPE == 'OPEN_TYPE':
-            pname = name_to_golang(part._name, True)
-            self.basicTypes[pname] = "interface{}"
-            return True
-        return False
-
->>>>>>> .r495
     def genType(self, modName, structName, part):
         if part.TYPE == 'ENUMERATED':
             self.genConstants(modName, part)
@@ -534,150 +369,9 @@ class GoGenerator(_Generator):
         modlist = []
         #
         for mod_name in [mn for mn in GLOBAL.MOD if mn[:1] != '_']:
-<<<<<<< .mine
-||||||| .r493
-            for a in [aa for aa in GLOBAL.MOD[mod_name] if aa[:1] != '_']:
-                if a.lower() in self.asnObject:
-                    print("{0} is already defined".format(a))
-                else:
-                    item = GLOBAL.MOD[mod_name][a]
-                    self.asnObject[a.lower()] = item
-                    if a.lower() == "s1setup":
-                        print("Here")
-
-        for mod_name in [mn for mn in GLOBAL.MOD if mn[:1] != '_']:
             self.currentModule = mod_name
             modName = name_to_defin(mod_name).lower()
-            if self.dumpfd != None:
-                self.dumpfd.close()
-            self.dumpfd = open(modName + "_dump.txt","w")
-            #if not os.path.isdir(self.dest + "/" + modName):
-            #    os.mkdir(self.dest + "/" + modName)
-
-            self.dumpfd.write("\n\n***********************************************\nModule {0}\n***********************************************\n".format(modName))
-            constEnums = None
-
-            # Create structs for all containers: CHOICE, SEQ, SET, CLASS
-            asnStructs = GLOBAL.MOD[mod_name]
-            for structName in asnStructs:
-                if structName[:1] == '_':
-                    continue
-                part = asnStructs[structName]
-                if structName == "HandoverRequired":
-                    print("HERE")
-                self.dumpObj("", part)
-
-
-                if self.checkBasicType(part, structName):
-                    continue
-
-                if part.TYPE == 'ENUMERATED':
-                    self.genConstants(modName, part)
-                elif part.TYPE == 'SEQUENCE':
-                    structName = name_to_golang(structName, True)
-                    self.genSequence(structName, part)
-                elif part.TYPE == 'SEQUENCE OF':
-                    structName = name_to_golang(structName, True)
-                    self.genSequenceOf(structName, part)
-                elif part.TYPE == 'CHOICE':
-                    structName = name_to_golang(structName,True)
-                    self.genChoice(structName, part)
-                elif part.TYPE == 'CLASS':
-                    if isinstance(part._val, dict):
-                        structName = name_to_golang(structName,True)
-                        fd = open(self.dest + "/"  + structName + ".go", 'w')
-                        fd.write("package " + self.pkg + "\n\n")
-                        for item in part._val["root"]:
-                            for c in item:
-                                itemName = name_to_golang(c, True)
-                                fd.write("type " + itemName + " struct {\n")
-                                fd.write("\t" + itemName + "\t*" + itemName + "\n")
-                                fd.write("}\n")
-                        fd.close()
-                else:
-                    print("Unhandled {0} {1}\n".format(part._name, part.TYPE))
-
-
-        '''
-                self.fd = open(self.dest + "/basicTypes.go", 'w')
-                self.fd.write("package " + self.pkg + "\n\n")
-                for a in self.basicTypes:
-                    self.fd.write("type {0} {1}\n".format(a, self.basicTypes[a]))
-                self.fd.close()
-        '''
-
-        for mod_name in [mn for mn in GLOBAL.MOD if mn[:1] != '_']:
-            self.open()
-            self.wdl('package ' + self.pkg)
-            self.wdl('// -*- coding: UTF-8 -*-')
-            self.wdl('// Code automatically generated by pycrate_asn1c')
-            self.wdl('')
-            self.wdl('import (')
-            self.wdl('//\t"fmt"')
-            self.wdl('\t"../asn2gort"')
-            self.wdl('//\t"reflect"')   
-            self.wdl(')')
-            self.wdl('')
-=======
-            for a in [aa for aa in GLOBAL.MOD[mod_name] if aa[:1] != '_']:
-                if a.lower() in self.asnObject:
-                    print("{0} is already defined".format(a))
-                else:
-                    item = GLOBAL.MOD[mod_name][a]
-                    self.asnObject[a.lower()] = item
-                    if a.lower() == "s1setup":
-                        print("Here")
-
-        for mod_name in [mn for mn in GLOBAL.MOD if mn[:1] != '_']:
-            self.currentModule = mod_name
-            modName = name_to_defin(mod_name).lower()
-            if self.dumpfd != None:
-                self.dumpfd.close()
-            self.dumpfd = open(modName + "_dump.txt","w")
-            #if not os.path.isdir(self.dest + "/" + modName):
-            #    os.mkdir(self.dest + "/" + modName)
-
-            self.dumpfd.write("\n\n***********************************************\nModule {0}\n***********************************************\n".format(modName))
-            constEnums = None
-
-            # Create structs for all containers: CHOICE, SEQ, SET, CLASS
-            asnStructs = GLOBAL.MOD[mod_name]
-            for structName in asnStructs:
-                if structName[:1] == '_':
-                    continue
-                part = asnStructs[structName]
-                if structName == "HandoverRequired":
-                    print("HERE")
-                self.dumpObj("", part)
-
-                if self.checkBasicType(part, structName):
-                    continue
-
-                self.genType(modName, structName, part)
-
-        '''
-                self.fd = open(self.dest + "/basicTypes.go", 'w')
-                self.fd.write("package " + self.pkg + "\n\n")
-                for a in self.basicTypes:
-                    self.fd.write("type {0} {1}\n".format(a, self.basicTypes[a]))
-                self.fd.close()
-        '''
-
-        for mod_name in [mn for mn in GLOBAL.MOD if mn[:1] != '_']:
-            self.open()
-            self.wdl('package ' + self.pkg)
-            self.wdl('// -*- coding: UTF-8 -*-')
-            self.wdl('// Code automatically generated by pycrate_asn1c')
-            self.wdl('')
-            self.wdl('import (')
-            self.wdl('//\t"fmt"')
-            self.wdl('\t"../asn2gort"')
-            self.wdl('//\t"reflect"')   
-            self.wdl(')')
-            self.wdl('')
->>>>>>> .r495
             self._mod_name = mod_name
-            Mod = GLOBAL.MOD[mod_name]
             pymodname = name_to_defin(mod_name)
             #
             self.wrl('// {0}\n'.format(pymodname))
@@ -685,14 +379,13 @@ class GoGenerator(_Generator):
             self._all_ = []
             self._allobj_ = {}
             self.gen_mod(GLOBAL.MOD[mod_name])
-            self.wrl('_all_ = [')
-            for pyobjname in self._all_:
-                self.wrl('    {0},'.format(pyobjname))
-            self.wrl(']')
+            #self.wrl('_all_ = [')
+            #for pyobjname in self._all_:
+            #    self.wrl('    {0},'.format(pyobjname))
+            #self.wrl(']')
             modlist.append(pymodname)
             #
-            self.indent = 0
-            self.wrl('')
+            #self.wrl('')
             
         self.wrl('// Table lookups')
         self.wrl('func init() {')
@@ -728,36 +421,12 @@ class GoGenerator(_Generator):
                     struct += vals + "}"
                     self.wrl("\tAddTableRef('{0}_{1}', {2}, {3})".format(tbl,  x,  index,  struct))
         self.wrl('}')
-        #
-        # create the _IMPL_ class if required
-        if self._impl:
-            self.wrl('class _IMPL_:\n')
-            self.indent = 4
-            #
-            self.wrl('_name_ = \'_IMPL_\'')
-            self.wrl('_oid_  = []')
-            self.wrl('_obj_  = {0!r}'.format(GLOBAL.MOD['_IMPL_']['_obj_']))
-            self.wrl('')
-            #
-            self._all_ = []
-            self._allobj_ = {}
-            self.gen_mod(GLOBAL.MOD['_IMPL_'])
-            self.wrl('_all_ = [')
-            for pyobjname in self._all_:
-                self.wrl('    {0},'.format(pyobjname))
-            self.wrl(']')
-            modlist.append('_IMPL_')
-            #
-            self.indent = 0
-            self.wrl('')
-        #
-        self.wrl('init_modules(' + ', '.join(modlist) + ')')        
     
     def gen_mod(self, Mod):
         obj_names = [obj_name for obj_name in Mod.keys() if obj_name[0:1] != '_']
         for obj_name in obj_names:
             Obj = Mod[obj_name]
-            self.wrl('//-----< {0} >-----#'.format(Obj._name))
+            #self.wrl('//-----< {0} >-----#'.format(Obj._name))
             if Obj._mode == MODE_TYPE:
                 self.gen_type(Obj)
             elif Obj._mode == MODE_SET:
@@ -767,7 +436,7 @@ class GoGenerator(_Generator):
             # delete potential table constraints caches
             if hasattr(self, '_const_tabs'):
                 del self._const_tabs
-            self.wrl('')
+            #self.wrl('')
     
     def _handle_dup(self, Obj):
         if Obj._pyname in self._all_:
@@ -887,7 +556,7 @@ class GoGenerator(_Generator):
             return
         #
         # now generate the set of values
-        self.wrl('{0}._val = {1}'.format(Obj._pyname, set_to_defin(ASN1Set(Obj._val), Obj, self)))
+        self.wrl('{0}._val1 = {1}'.format(Obj._pyname, set_to_defin(ASN1Set(Obj._val), Obj, self)))
     
     def gen_val(self, Obj):
         if Obj.TYPE == "CLASS":
@@ -901,7 +570,7 @@ class GoGenerator(_Generator):
             return
         #
         # now generate the set of values
-        self.wrl('{0}._val = {1}'.format(Obj._pyname, value_to_defin(Obj._val, Obj, self)))
+        self.wrl('{0}._val2 = {1}'.format(Obj._pyname, value_to_defin(Obj._val, Obj, self)))
     
     def _gen_type_init_attr(self, Obj, compts):
         # CLASSes do not result in acutal Go code
