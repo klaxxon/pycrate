@@ -48,16 +48,75 @@ class _Generator(object):
         self.pkg = pmod
         if not os.path.isdir(self.dest):
             os,mkdir(self.dest)
-        self.fd = open(self.dest + "/code.go", 'w')
+        self.fd = open(self.dest + "/code.pgo", 'w')
         self.indent = 0
         self.gen()
         self.fd.close()
+        self.pgo2go(self.dest + "/code.pgo")
+        
     
+    def wrs(self, structName,  s):
+        s += "\n"
+        if structName not in self.structs:
+            self.structs[structName] = s 
+        else:
+            self.structs[structName] += s
+
     def wrl(self, s):
-        self.fd.write('{0}{1}\n'.format(self.indent * ' ', s))
+        self.fd.write('{0}\n'.format(s))
     
     def gen(self):
         pass
+        
+    def pgo2go(self,  fn):
+        names = {}
+        self.fd = open(fn, 'r')
+        while True:
+            l = self.fd.readline()
+            if l == "":
+                break
+            pos = l.find("//*")
+            if pos == -1:
+                continue
+            l = l[pos+3:]
+            pos = l.find(" ")
+            if pos == -1:
+                continue
+            name = l[:pos]
+            val = l[pos+1:]
+            names[name] = val
+        self.fd.close()
+        out = ""
+        self.fd = open(fn, 'r')
+        while True:
+            l = self.fd.readline()
+            if l == "":
+                break
+            pos = l.find("//*")
+            if pos != -1:
+                continue
+            while True:
+                start = l.find("//=")
+                if start == -1:
+                    out += l
+                    break
+                v = l[start+3:]
+                pos = v.find(" ")
+                if pos == -1:
+                    pos = len(v)
+                name = l[start+3 : (pos + start + 3)]
+                if name in names:
+                    o = ""
+                    if len(l) == start+pos+3:
+                        o = l[0:start] + v + "\n"
+                    else:
+                        o = l[0:start] + v
+                    l = o + l[(start+pos+3):]
+                else:
+                    print("Unknown pre-processor name \"{0}\"\n".format(name))
+                    break
+            out += l
+        self.fd.close()
 
 #------------------------------------------------------------------------------#
 # Python source code generator
@@ -360,6 +419,7 @@ class GoGenerator(_Generator):
     def gen(self):
         self.tables = {}
         self.fieldTypes = {}
+        self.structs = {}
         #
         self.wrl("package {0}\n\n".format(self.pkg))
         self.wrl('import (')
@@ -374,8 +434,8 @@ class GoGenerator(_Generator):
             self._mod_name = mod_name
             pymodname = name_to_defin(mod_name)
             #
-            self.wrl('// {0}\n'.format(pymodname))
-            self.wrl('')
+            #self.wrl('// {0}\n'.format(pymodname))
+            #self.wrl('')
             self._all_ = []
             self._allobj_ = {}
             self.gen_mod(GLOBAL.MOD[mod_name])
@@ -386,6 +446,11 @@ class GoGenerator(_Generator):
             modlist.append(pymodname)
             #
             #self.wrl('')
+        self.wrl('// Structs')
+        for s in self.structs:
+            self.wrl("type {0} struct {{".format(name_to_golang(s, True)))
+            self.wrl("\t{1}".format(s,  self.structs[s]))
+            self.wrl("}\n\n")
             
         self.wrl('// Table lookups')
         self.wrl('func init() {')
@@ -454,19 +519,23 @@ class GoGenerator(_Generator):
             else:
                 # change _pyname attribute, until an unused _pyname is found
                 ext = 0
-                Obj._pyname = Obj._pyname + '_{0!r}'.format(ext)
-                while Obj._pyname in self._all_:
-                    ObjDef = self._allobj_[Obj._pyname]
+                newName = Obj._pyname + '_{0!r}'.format(ext)
+                #Obj._pyname = Obj._pyname + '_{0!r}'.format(ext)
+                while newName in self._all_:
+                    ObjDef = self._allobj_[newName]
                     if Obj == ObjDef or \
                     Obj._name == ObjDef._name and Obj._type == ObjDef._type and \
                     Obj._mode == ObjDef._mode and Obj._typeref == ObjDef._typeref and \
                     Obj._cont == ObjDef._cont and Obj._const == ObjDef._const and \
                     Obj._tag == ObjDef._tag and Obj._flag == ObjDef._flag and \
                     Obj._val == ObjDef._val:
+                        Obj._pyname = newName
                         return True
                     else:
                         ext += 1
-                        Obj._pyname = Obj._pyname[:-2] + '_{0!r}'.format(ext)
+                        newName = Obj._pyname + '_{0!r}'.format(ext)
+                        #Obj._pyname = Obj._pyname[:-2] + '_{0!r}'.format(ext)
+                Obj._pyname = newName
                 return False
         else:
             return False
@@ -538,11 +607,12 @@ class GoGenerator(_Generator):
                   .format(self._mod_name, Obj._name, Obj.TYPE)))
         #
         # 8) generate the table constraint
-        self.gen_const_table(Obj)
+        str = self.gen_const_table(Obj)
         #
         # 9) keep track of the generated object
         self._all_.append(Obj._pyname)
         self._allobj_[Obj._pyname] = Obj
+        return str
     
     def gen_set(self, Obj):
         if Obj.TYPE == "CLASS":
@@ -570,7 +640,10 @@ class GoGenerator(_Generator):
             return
         #
         # now generate the set of values
-        self.wrl('{0}._val2 = {1}'.format(Obj._pyname, value_to_defin(Obj._val, Obj, self)))
+        if Obj.TYPE == "INTEGER":
+            self.wrl('const {0} int = {1}'.format(Obj._pyname, value_to_defin(Obj._val, Obj, self)))
+        else:
+            self.wrl('// {0}._val2 = {1}'.format(Obj._pyname, value_to_defin(Obj._val, Obj, self)))
     
     def _gen_type_init_attr(self, Obj, compts):
         # CLASSes do not result in acutal Go code
@@ -610,7 +683,7 @@ class GoGenerator(_Generator):
         return ', '.join(attr)
     
     def commentCode(self, o ):
-        self.wrl("/*\n{0}\n*/".format(o._text_def))
+        return "/*\n{0}\n*/\n".format(o._text_def)
         
     #--------------------------------------------------------------------------#
     # specific types
@@ -699,20 +772,19 @@ class GoGenerator(_Generator):
                 self.gen_type(Cont, compts=True)
                 links[name] = Cont._pyname
             # now link all of them in an ASN1Dict into the Obj content
-            self.commentCode(Obj)
-            self.wrl('type {0} struct {{\n\tAsnCHOICE'.format(Obj._pyname))
+            self.wrs(Obj._pyname, self.commentCode(Obj))
+            self.wrs(Obj._pyname,  '\tAsnCHOICE')
             extension = False
             for name in links:
                 l = links[name]
                 if Obj._ext is not None:
                     if name in Obj._ext and not extension:
-                        self.wrl("\tAsnEXTENSION // {0}".format(name))
+                        self.wrs(Obj._pyname, "\tAsnEXTENSION // {0}".format(name))
                         extension = True
-                self.wrl('\t{0} {1} // {2}'.format(name_to_golang(name, True), l, l ))
+                self.wrs(Obj._pyname,  '\t{0} {1} // {2}'.format(name_to_golang(name, True), l, l ))
             # extension
             if Obj._ext is not None and not extension:
-                self.wrl('\tAsnEXTENSION')
-            self.wrl('}\n')
+                self.wrs(Obj._pyname,  '\tAsnEXTENSION')
         # value constraint
         self.gen_const_val(Obj)
     
@@ -721,13 +793,15 @@ class GoGenerator(_Generator):
         if Obj._cont is not None:
             # TODO: apply CONST_COMPS if exists
             # create all objects of the content first
-            self.commentCode(Obj)
-            self.wrl('type {0} struct {{\n\tAsn'.format(Obj._pyname))
+            self.wrs(Obj._pyname, self.commentCode(Obj))
+            self.wrs(Obj._pyname, 'type {0} struct {{\n\tAsn'.format(Obj._pyname))
             links = ASN1Dict()
             for name in Obj._cont:
                 Cont = Obj._cont[name]
                 Cont._pyname = '_{0}_{1}'.format(Obj._pyname, name_to_defin(Cont._name))
-                self.gen_type(Cont, compts=True)
+                x = self.gen_type(Cont, compts=True)
+                if x != None:
+                    self.wrs(Obj._pyname, x)
                 links[name] = Cont._pyname
             # now link all of them in an ASN1Dict into the Obj content
             extension = False
@@ -735,13 +809,13 @@ class GoGenerator(_Generator):
                 l = links[name]
                 if Obj._ext is not None:
                     if name in Obj._ext and not extension:
-                        self.wrl("\tAsnEXTENSION //{0}".format(name))
+                        self.wrs(Obj._pyname, "\tAsnEXTENSION //{0}".format(name))
                         extension = True
-                self.wrl('\t{0} {1} //{2}'.format(name_to_golang(name, True), l, l ))
+                self.wrs(Obj._pyname, '\t{0} {1} //{2}'.format(name_to_golang(name, True), l, l ))
             # extension
             if Obj._ext is not None and not extension:
-                self.wrl('\tAsnEXTENSION')
-            self.wrl('}\n')
+                self.wrs(Obj._pyname, '\tAsnEXTENSION')
+            self.wrs(Obj._pyname, '}\n')
         # value constraint
         self.gen_const_val(Obj)
     
@@ -871,7 +945,7 @@ class GoGenerator(_Generator):
             # If the table lookup has not been saved, save it 
             indexName = Obj._typeref.ced_path[-1]
             table = Obj._typeref.called[-1]
-            root = C['tab']['val']['root']
+            root = C['tab']['val']['root'] 
             ext = C['tab']['val']['ext']
             if table not in self.tables:
                 tbl = {}
@@ -910,9 +984,10 @@ class GoGenerator(_Generator):
             # Is this the index?
             fieldName = Obj._typeref.ced_path[-1]
             if tbl['idx'] == fieldName:
-                self.wrl('\t{0} int64  `table:"{1}" range:"{2}"`'.format(name_to_golang(fieldName, True),  table,  range))
+                self.wrs(Obj._pyname, '\t{0} int64  `table:"{1}" range:"{2}"`'.format(name_to_golang(fieldName, True),  table,  range))
             else:
-                self.wrl('\t{0} //={1}"`'.format(name_to_golang(fieldName, True), Obj._pyname))
+                self.wrs(Obj._pyname, '\t{0} //={1}'.format(name_to_golang(fieldName, True), Obj._pyname))
+
             # define the @ identifier
             #if Const['at'] is None:
             #   self.wrl('{0}._const_tab_at = None'.format(Obj._pyname))
