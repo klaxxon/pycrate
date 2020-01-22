@@ -298,8 +298,11 @@ class GoGenerator(_Generator):
         if objName in self.defines:
             fd.write(" //replace:{0}".format(objName))
             return
-        if Obj.TYPE=="SEQUENCE":
-            fd.write("*{0}".format(objName))
+        if Obj._type==TYPE_SEQ or Obj._type == TYPE_CHOICE:
+            if Obj.get_refchain is not None:
+                fd.write("*{0}".format(name_to_golang(Obj.get_refchain()[0]._name,  True)))
+            else:
+                fd.write("*{0}".format(objName))
         elif Obj.TYPE == "INTEGER":
             tag = ""
             if Obj.get_classref() is not None:
@@ -404,8 +407,19 @@ class GoGenerator(_Generator):
             if ext == child._name:
                 fd.write("\tAsnEXTENSION\n")
                 ext = ""
-            fd.write("\t{0}  []".format(childName))
+            fd.write("\tItem  []")
             self.writeType(fd,  child)
+            if Obj._name == "ProtocolIE-ContainerList":
+                pass
+            c = self.buildConstraint(Obj)
+            mod = ""
+            # No constraints on octet string still requires array definition
+            if Obj.is_opt():
+                mod="mod:\"optional\""
+            if c == "":  
+                fd.write("[]byte `array:\"x\" {0}`".format(mod))
+            else:
+                fd.write(" `array:\"{0}\" {1}`".format(c["val"],  mod))
             fd.write("\n")
             self.gen_const_table(child)
         if ext != "":
@@ -494,11 +508,19 @@ class GoGenerator(_Generator):
             fd.write("********************************/\n")
             for obj_name in obj_names:
                 Obj = Mod[obj_name]
-                if obj_name == "s1Setup":
+                if obj_name == "BPLMNs":
                     pass
-                if Obj._mode == MODE_SET or Obj._mode == MODE_VALUE or Obj.TYPE == "CLASS":
+                if Obj._mode == MODE_SET or Obj._mode == MODE_VALUE or Obj.TYPE == "CLASS" or Obj.get_param() is not None:
                     continue
-                fd.write('\n/* {0}, Mode {1}, TYPE {2}, Param {3}  */\n'.format(obj_name,  Obj._mode,  Obj.TYPE,  Obj.get_param()))
+                param = ""
+                if Obj.get_param() is not None:
+                    if hasattr(Obj._cont,  "_typeref"):
+                        param = Obj._cont._typeref.called[-1]
+                    elif Obj._typeref is not None:
+                        param = Obj._typeref.called[-1]
+                    else:
+                        continue
+                fd.write('\n/* {0}, Mode {1}, TYPE {2}, Param {3}  */\n'.format(obj_name,  Obj._mode,  Obj.TYPE,  param))
                 fd.write(self.commentCode(Obj))
                 #if Obj.get_param() is not None:
                 #    continue
