@@ -48,7 +48,7 @@ class _Generator(object):
         pmod = pkg[p:].lower()
         self.pkg = pmod
         if not os.path.isdir(self.dest):
-            os,mkdir(self.dest)
+            os.mkdir(self.dest)
         self.indent = 0
         self.gen()
         self.pgo2go(self.dest )
