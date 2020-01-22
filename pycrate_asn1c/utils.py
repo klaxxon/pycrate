@@ -429,17 +429,17 @@ def name_to_golang(n, public):
         # n is a Python keyword
         n += '_'
     r = ''
-    capitalize = False
+    #capitalize = False
     for a in n:
         if a == '-' or a == ' ':
             r += '_'
-            capitalize = True
+            #capitalize = True
             #r += a
             continue
-        a = a.lower()
-        if capitalize:
-            a = a.upper()
-            capitalize = False
+        #a = a.lower()
+        #if capitalize:
+            #a = a.upper()
+            #capitalize = False
         r += a
     if public:
         return r[0].upper() + r[1:]
