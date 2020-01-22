@@ -49,10 +49,8 @@ class _Generator(object):
         self.pkg = pmod
         if not os.path.isdir(self.dest):
             os,mkdir(self.dest)
-        self.fd = open(self.dest + "/code.pgo", 'w')
         self.indent = 0
         self.gen()
-        self.fd.close()
         self.pgo2go(self.dest )
         
     
@@ -246,7 +244,8 @@ class GoGenerator(_Generator):
                 tbl['idx'] = indexName
                 tbl["root"] =root
                 tbl['ext'] = ext
-                self.tables[table] = tbl            
+                self.tables[table] = tbl 
+            '''           
             #ConstTab = Const['tab']
             link_name = None
             # check if the same constraint was already defined somewhere in the root object
@@ -267,19 +266,7 @@ class GoGenerator(_Generator):
                     self._const_tabs = [(link_name, Const['tab'].get_val())]
                 else:
                     self._const_tabs.append( (link_name, Const['tab'].get_val()) )
-            # now link it to the Obj constraint
-            constraint = Obj.get_const()
-            range = None
-            if constraint[-1]['type'] == 'VAL':
-                range = constraint[-1]['text']
-            # self.wrl('{0}._const_tab = {1}'.format(Obj._pyname, link_name))
-            tbl = self.tables[table]
-            # Is this the index?
-            fieldName = Obj._typeref.ced_path[-1]
-            if tbl['idx'] == fieldName:
-                self.wrs(Obj._pyname, '\t{0} int64  `table:"{1}" range:"{2}"`'.format(name_to_golang(fieldName, True),  table,  range))
-            else:
-                self.wrs(Obj._pyname, '\t{0} //={1}'.format(name_to_golang(fieldName, True), Obj._pyname))
+                    '''
 
     def buildConstraint(self,  Obj):
         c = {}
@@ -308,8 +295,6 @@ class GoGenerator(_Generator):
         
     def writeType(self,  fd,  Obj):
         objName = name_to_golang(Obj._name,  True)
-        if objName == "ProcedureCode":
-            pass
         if objName in self.defines:
             fd.write(" //replace:{0}".format(objName))
             return
@@ -348,7 +333,7 @@ class GoGenerator(_Generator):
                 fd.write("[]byte `array:\"{0}\" {1}`".format(c["val"],  mod))
         elif Obj.TYPE == "ENUMERATED":
             if Obj.get_typeref() is not None:
-                fd.write("//replace:{0}".format(Obj.get_typeref()._name))
+                fd.write("//replace:{0}".format(name_to_golang(Obj.get_typeref()._name,  True)))
             else:
                 str = "`type:\"enum("
                 comma = False
@@ -400,6 +385,29 @@ class GoGenerator(_Generator):
             fd.write("\t{0}  ".format(childName))
             self.writeType(fd,  child)
             fd.write("\n")
+            self.gen_const_table(child)
+        if ext != "":
+            fd.write("\tAsnEXTENSION\n")
+        fd.write("}\n")
+
+    def writeSequenceOf(self,  fd,  Obj):
+        fd.write("type {0} struct {{\n\tAsn\n".format(name_to_golang(Obj._name,  True)))
+        ext = ""
+        if Obj._ext is not None:
+            if len(Obj._ext) == 0:
+                ext = "!!!PLACE_AT_END!!!"
+            else:
+                ext = Obj._ext[-1]
+        if Obj._cont is not None:
+            child = Obj._cont
+            childName = name_to_golang(child._name,  True)
+            if ext == child._name:
+                fd.write("\tAsnEXTENSION\n")
+                ext = ""
+            fd.write("\t{0}  []".format(childName))
+            self.writeType(fd,  child)
+            fd.write("\n")
+            self.gen_const_table(child)
         if ext != "":
             fd.write("\tAsnEXTENSION\n")
         fd.write("}\n")
@@ -409,12 +417,6 @@ class GoGenerator(_Generator):
         self.fieldTypes = {}
         self.structs = {}
         self.defines = {}
-        #
-        self.wrl("package {0}\n\n".format(self.pkg))
-        #self.wrl('import (')
-        #self.wrl('\t. "asn2gort"')
-        #self.wrl(')\n\n')
-        #
         modlist = []
         # Constants and basic types and enumerations
         fd = open(self.dest + "/consts.pgo", 'w')
@@ -483,7 +485,6 @@ class GoGenerator(_Generator):
         fd.write(')\n\n')
         for mod_name in [mn for mn in GLOBAL.MOD if mn[:1] != '_']:
             self.currentModule = mod_name
-            modName = name_to_defin(mod_name).lower()
             self._mod_name = mod_name
             pymodname = name_to_defin(mod_name)
             Mod = GLOBAL.MOD[mod_name]
@@ -495,22 +496,23 @@ class GoGenerator(_Generator):
                 Obj = Mod[obj_name]
                 if obj_name == "s1Setup":
                     pass
-                if Obj._mode == MODE_SET or Obj._mode == MODE_VALUE or Obj.TYPE == "CLASS" or Obj.get_param() is not None:
+                if Obj._mode == MODE_SET or Obj._mode == MODE_VALUE or Obj.TYPE == "CLASS":
                     continue
                 fd.write('\n/* {0}, Mode {1}, TYPE {2}, Param {3}  */\n'.format(obj_name,  Obj._mode,  Obj.TYPE,  Obj.get_param()))
                 fd.write(self.commentCode(Obj))
+                #if Obj.get_param() is not None:
+                #    continue
                 if Obj._mode == MODE_TYPE:
                     if Obj.TYPE == "CHOICE":
                         self.writeChoice(fd,  Obj)
                     elif Obj.TYPE == "SEQUENCE":
                         self.writeSequence(fd,  Obj)
+                    elif Obj.TYPE == "SEQUENCE OF":
+                        self.writeSequenceOf(fd,  Obj)
             modlist.append(pymodname)
-
-        fd.write('// Table lookups')
-        fd.write('func init() {')
-        
-        #for mod_name in [mn for mn in GLOBAL.MOD if mn[:1] != '_']:
-        for mod_name in [mn for mn in GLOBAL.MOD]:
+        fd.close()
+        '''
+        for mod_name in [mn for mn in GLOBAL.MOD if mn[:1] != '_']:
             self.currentModule = mod_name
             self._mod_name = mod_name
             pymodname = name_to_defin(mod_name)
@@ -519,31 +521,15 @@ class GoGenerator(_Generator):
             modWritten = False
             for obj_name in obj_names:
                 Obj = Mod[obj_name]
-                tr = Obj._typeref
-                if tr is None:
-                    continue
-                if len(tr.ced_path) == 0:
-                    continue
-                if tr.ced_path[-1] == "ProcedureCode":
-                    pass
-                if Obj._mode != MODE_SET:
-                    continue
-                table = Obj._typeref.called[-1]
-                for v in Obj.get_val():
-                    val = Obj._val[v]
-                    print(v, val)
-                    indexName = Obj._typeref.ced_path[-1]
-                    root = Obj._val['root'] 
-                    ext = Obj._val['ext']
-                    if table not in self.tables:
-                        tbl = {}
-                        tbl['name'] = table
-                        tbl['idx'] = indexName
-                        tbl["root"] =root
-                        tbl['ext'] = ext
-                        self.tables[table] = tbl            
-                pass
-
+                self.gen_const_table(Obj)
+        '''
+        fd = open(self.dest + "/tables.pgo", 'w')
+        fd.write("package {0}\n\n".format(self.pkg))
+        fd.write('import (')
+        fd.write('\t. "asn2gort"')
+        fd.write(')\n\n')
+        fd.write('// Table lookups\n')
+        fd.write('func init() {\n')
         # All of out tables for lookup
         for tbl in self.tables:
             c = self.tables[tbl]
@@ -551,28 +537,33 @@ class GoGenerator(_Generator):
             idx = c['idx']
             # Runs through each member of the set
             for a in root:
-                index = a[idx]
-                # Now we must run through each item
-                # Each item in a set can specify one or more Types, we save these
-                # Each item in a set can specify zero or more values, save these also
-                structRef = {}
-                valRef = {}
-                for b in a:
-                    if b == idx:
-                        continue
-                    x = a[b]
-                    if b[0] >= 'A' and b[0] <='Z':
-                        structRef[b] = x._typeref.called[-1]
-                    else:
-                        valRef[b] = x
-                # Now we can instantiate the Go struct for this lookup with the specified values
-                for x in structRef:
-                    struct = "{0}{{".format(x)
-                    # Add default values
-                    vals = ""
-                    for y in valRef:
-                        vals += "{0}:{1}, ".format(y, valRef[y])
-                    vals += "Value:{0}{{}}".format(structRef[x])
-                    struct += vals + "}"
-                    fd.write("\tAddTableRef('{0}_{1}', {2}, {3})".format(tbl,  x,  index,  struct))
+                # Parameterized?
+                if isinstance(a,  ASN1RefSet):
+                    pass
+                else:
+                    index = a[idx]
+                    # Now we must run through each item
+                    # Each item in a set can specify one or more Types, we save these
+                    # Each item in a set can specify zero or more values, save these also
+                    structRef = {}
+                    valRef = {}
+                    for b in a:
+                        if b == idx:
+                            continue
+                        x = a[b]
+                        if b[0] >= 'A' and b[0] <='Z':
+                            structRef[b] = x._typeref.called[-1]
+                        else:
+                            valRef[b] = name_to_golang(x, True)
+                    # Now we can instantiate the Go struct for this lookup with the specified values
+                    for x in structRef:
+                        struct = "{0}{{".format(x)
+                        # Add default values
+                        vals = ""
+                        for y in valRef:
+                            vals += "{0}:{1}, ".format(name_to_golang(y, True), valRef[y])
+                        vals += "Value:{0}{{}}".format(structRef[x])
+                        struct += vals + "}"
+                        fd.write("\tAddTableRef(\"{0}_{1}\", {2}, {3})\n".format(tbl,  x,  index,  struct))
         fd.write('}')
+        fd.close()
