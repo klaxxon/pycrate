@@ -330,6 +330,8 @@ class GoGenerator(_Generator):
 
     def writeType(self,  fd,  Obj,  gft = None):
         objName = name_to_golang(Obj._name,  True)
+        if objName == "FirstCriticality":
+            pass
         # This could be an array of something where we get _item_ for a name.  If so resolve to the array type
         if Obj._typeref is not None:
             objType =objName
@@ -360,28 +362,30 @@ class GoGenerator(_Generator):
                 fd.write("[]*{0}".format(name_to_golang(ref,  True)))
             else:
                 fd.write("[]*{0}".format(name_to_golang(Obj.get_refchain()[0]._name,  True)))
-        elif Obj.TYPE == "INTEGER":
+        elif Obj._type == TYPE_INT:
             tag = ""
             if Obj.get_classref() is not None:
+                # Force table lookup field to int
+                objName = "int"
                 tag += " table:\"{0}\" ".format(Obj.get_classref()._name)
             tag += self.buildConstraint(Obj)["tag"]
             if tag != "":
                 fd.write("{0} `{1}`".format(objName,  tag.strip()))
             else:
                 fd.write("{0} ".format(objName))
-        elif Obj.TYPE == "OBJECT IDENTIFIER":
+        elif Obj._type == TYPE_OID:
             fd.write("[]byte `array:\"x\"` ")
-        elif Obj.TYPE == "OPEN_TYPE":
+        elif Obj._type == TYPE_OPEN:
             fd.write("interface{} `type:\"table\"` ")
-        elif Obj.TYPE == "BIT STRING":
+        elif Obj._type == TYPE_BIT_STR:
             fd.write("uint64 `type:\"bitstring\" {0}`".format(self.buildConstraint(Obj)["tag"]))
-        elif Obj.TYPE == "SEQUENCE OF":
+        elif Obj._type == TYPE_SEQ_OF:
             # Do mod spearately since we are only using the constraint val
             mod = ""
             if Obj.is_opt():
                 mod="mod:\"optional\""
             fd.write("[]{0} `array:\"{1}\" {2}`".format(name_to_golang(Obj.get_typeref()._name, True),  self.buildConstraint(Obj)["val"],  mod))
-        elif Obj.TYPE == "OCTET STRING":
+        elif Obj._type == TYPE_OCT_STR:
             mod = ""
             c = self.buildConstraint(Obj)
             # No constraints on octet string still requires array definition
@@ -391,12 +395,14 @@ class GoGenerator(_Generator):
                 fd.write("[]byte `type:\"octetstring\" array:\"x\" {0}`".format(mod))
             else:
                 fd.write("[]byte `type:\"octetstring\" array:\"{0}\" {1}`".format(c["val"],  mod))
-        elif Obj.TYPE == "ENUMERATED":
+        elif Obj._type == TYPE_ENUM:
             if Obj.get_typeref() is not None:
                 typeName = name_to_golang(Obj.get_typeref()._name,  True)
+                if Obj.get_typeref()._typeref is not None:
+                    typeName = name_to_golang(Obj.get_typeref()._typeref.called[-1] ,  True)
                 if typeName in self.simpleTypes:
                     tags =  self.simpleTypes[typeName].tags
-                    fd.write("{0} {1}".format(name_to_golang(Obj.get_typeref()._name,  True),  formatTags(tags)))
+                    fd.write("{0} {1}".format(name_to_golang(typeName,  True),  formatTags(tags)))
             else:
                 str = "`type:\"enum("
                 comma = False
