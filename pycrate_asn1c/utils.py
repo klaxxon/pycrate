@@ -856,3 +856,13 @@ def goarr(arr):
           s += ","
         s += qrepr(a)
     return s
+
+def formatTags(tags):
+    str = ""
+    if len(tags) > 0:
+        str = "`"
+        for a in tags:
+            b = tags[a]
+            str += "{0}:\"{1}\" ".format(a,  b)
+        str += "`"
+    return str
