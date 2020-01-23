@@ -251,7 +251,7 @@ class GoGenerator(_Generator):
             table = Obj._typeref.called[-1]
             tbl.inst = Obj.get_parent_root()._name
             # Combine the table and instance names
-            table = table + "_" + tbl.inst
+            table = table
             if table in self.tables:
                 tbl = self.tables[table]
             else:
@@ -261,7 +261,6 @@ class GoGenerator(_Generator):
             tbl.typeRef = Obj._typeref
             
             if Const["at"] is not None:
-                #tbl.copiedFieldNames.append(name_to_golang(name,  True))
                 tbl.copiedFieldNames[name] =  Obj._typeref
             else:
                 tbl.idName = name
@@ -337,6 +336,10 @@ class GoGenerator(_Generator):
         if name in self.defined:
             stype.type = name
         return stype
+        
+    def getTableName(self,  Obj):
+        name = Obj.get_classref()._name
+        return name
 
     def writeType(self,  fd,  Obj,  gft = None):
         objName = name_to_golang(Obj._name,  True)
@@ -348,7 +351,7 @@ class GoGenerator(_Generator):
             if objType in self.simpleTypes:
                 stype = self.simpleTypes[objType]
                 if Obj.get_classref() is not None:
-                    stype.tags["table"]  = Obj.get_classref()._name
+                    stype.tags["table"]  = self.getTableName(Obj)
                 if Obj.is_opt():
                     stype.tags["mod"]  = "optional"
                 # If this type has been defined already, use the actual type
@@ -381,7 +384,7 @@ class GoGenerator(_Generator):
             if Obj.get_classref() is not None:
                 # Force table lookup field to int
                 objType = "int"
-                tag += " table:\"{0}\" ".format(Obj.get_classref()._name)
+                tag += " table:\"{0}\" ".format(self.getTableName(Obj))
             tag += self.buildConstraint(Obj)["tag"]
             if tag != "":
                 fd.write("{0} `{1}`".format(objType,  tag.strip()))
@@ -682,7 +685,6 @@ class GoGenerator(_Generator):
         for mod_name in [mn for mn in GLOBAL.MOD if mn[:1] != '_']:
             self.currentModule = mod_name
             self._mod_name = mod_name
-            pymodname = name_to_defin(mod_name)
             Mod = GLOBAL.MOD[mod_name]
             obj_names = [obj_name for obj_name in Mod.keys() if obj_name[0:1] != '_']
             fd.write("\n/*******************************\n")
