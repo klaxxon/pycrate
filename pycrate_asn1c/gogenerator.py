@@ -250,11 +250,11 @@ class GoGenerator(_Generator):
             tbl = GoTable()
             table = Obj._typeref.called[-1]
             tbl.inst = Obj.get_parent_root()._name
-            # Combine the table and instance names
-            table = table
+            new = False
             if table in self.tables:
                 tbl = self.tables[table]
             else:
+                new = True
                 tbl.name = table
                 
             name =Obj._typeref.ced_path[-1]
@@ -265,13 +265,23 @@ class GoGenerator(_Generator):
             else:
                 tbl.idName = name
                 
-            if C['tab']['val']['root']  is not None:
-                tbl.root = C['tab']['val']['root'] 
-            if C['tab']['val']['ext'] is not None:
-                tbl.ext = C['tab']['val']['ext']
-            print("Table",  tbl.name,  tbl.idName,  len(tbl.copiedFieldNames),  len(tbl.root),  len(tbl.ext))
-            self.tables[table] = tbl 
+            r = []
+            x = []
             ConstTab = Const['tab']
+            if new:
+                if ConstTab.get_val()["root"]  is not None:
+                    r = ConstTab.get_val()["root"]
+                    tbl.root+=r
+                if ConstTab.get_val()["ext"] is not None:
+                    x = ConstTab.get_val()["ext"]
+                    #tbl.ext = C['tab']['val']['ext']
+                    tbl.ext+=x
+            else:
+                pass
+            print("Table",  tbl.name,  tbl.idName,  tbl.typeRef,  len(tbl.copiedFieldNames),  len(r),  len(x))
+            self.tables[table] = tbl 
+            if table == "S1AP-PROTOCOL-IES":
+                pass
             link_name = None
             # check if the same constraint was already defined somewhere in the root object
             if hasattr(self, '_const_tabs'):
@@ -452,6 +462,7 @@ class GoGenerator(_Generator):
             fd.write("\t{0}  ".format(childName))
             self.writeType(fd,  child)
             fd.write("\n")
+            self.gen_const_table(child)
         if ext != "":
             fd.write("\tAsnEXTENSION\n")
         fd.write("}\n")
@@ -566,7 +577,6 @@ class GoGenerator(_Generator):
         for mod_name in [mn for mn in GLOBAL.MOD if mn[:1] != '_']:
             self.currentModule = mod_name
             self._mod_name = mod_name
-            pymodname = name_to_defin(mod_name)
             Mod = GLOBAL.MOD[mod_name]
             obj_names = [obj_name for obj_name in Mod.keys() if obj_name[0:1] != '_']
             modWritten = False
@@ -574,6 +584,8 @@ class GoGenerator(_Generator):
                 Obj = Mod[obj_name]
                 str = self.gen_const_table(Obj)
                 goName = name_to_golang(obj_name,  True)
+                if goName == "ENB_ID":
+                    pass
                 if (Obj._type != TYPE_INT and Obj._type != TYPE_OCT_STR  and Obj._type != TYPE_BIT_STR and Obj._type != TYPE_ENUM and Obj._type != TYPE_STR_PRINT) or Obj._mode == MODE_SET:
                     continue
                 if modWritten == False:
@@ -741,10 +753,7 @@ class GoGenerator(_Generator):
                 continue
             # Runs through each member of the set
             for a in root:
-                # Parameterized?
-                if isinstance(a,  ASN1RefSet):
-                    pass
-                else:
+                if isinstance(a,  ASN1Dict):
                     index = a[idx]
                     # Now we must run through each item
                     # Each item in a set can specify one or more Types, we save these
