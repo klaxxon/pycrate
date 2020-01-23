@@ -204,7 +204,7 @@ class GoTable():
     def __init__(self):
         self.name = ""
         self.idName = ""
-        self.copiedFieldNames = []
+        self.copiedFieldNames = {}
         self.root = []
         self.ext = []
         
@@ -257,12 +257,15 @@ class GoGenerator(_Generator):
             else:
                 tbl.name = table
                 
-            name = Obj._typeref.ced_path[-1]
+            name =Obj._typeref.ced_path[-1]
+            tbl.typeRef = Obj._typeref
             
             if Const["at"] is not None:
-                tbl.copiedFieldNames.append(name_to_golang(name,  True))
+                #tbl.copiedFieldNames.append(name_to_golang(name,  True))
+                tbl.copiedFieldNames[name] =  Obj._typeref
             else:
                 tbl.idName = name
+                
             if C['tab']['val']['root']  is not None:
                 tbl.root = C['tab']['val']['root'] 
             if C['tab']['val']['ext'] is not None:
@@ -326,15 +329,20 @@ class GoGenerator(_Generator):
             str += " mod:\"optional\""
         c["tag"] = str
         return c
-        
+       
+    def lookupSimpleDefined(self,  name):
+        stype = GoField()
+        if name in self.simpleTypes:
+            stype = self.simpleTypes[name]
+        if name in self.defined:
+            stype.type = name
+        return stype
 
     def writeType(self,  fd,  Obj,  gft = None):
         objName = name_to_golang(Obj._name,  True)
-        if objName == "FirstCriticality":
-            pass
+        objType =objName
         # This could be an array of something where we get _item_ for a name.  If so resolve to the array type
         if Obj._typeref is not None:
-            objType =objName
             if  objName == "_item_":
                 objType = name_to_golang(Obj._typeref.called[-1],  True)
             if objType in self.simpleTypes:
@@ -353,26 +361,32 @@ class GoGenerator(_Generator):
                 return
         if Obj._type==TYPE_SEQ  or Obj._type == TYPE_CHOICE:
             if Obj.get_refchain is not None:
-                fd.write("*{0}".format(name_to_golang(Obj.get_refchain()[0]._name,  True)))
-            else:
-                fd.write("*{0}".format(objName))
+                fd.write("*{0}".format(name_to_golang(Obj.get_refchain()[-1]._name,  True)))
+            else: 
+                fd.write("*{0}".format(objType))
         elif Obj._type == TYPE_SEQ_OF:
             if Obj.get_cont() is not None:
                 ref = Obj.get_cont()._typeref.called[-1]
-                fd.write("[]*{0}".format(name_to_golang(ref,  True)))
+                stype = self.lookupSimpleDefined(name_to_golang(ref,  True))
+                if stype.type != "":
+                    fd.write("[]{0}".format(stype.type))
+                else:
+                    fd.write("[]*{0}".format(name_to_golang(ref,  True)))
             else:
                 fd.write("[]*{0}".format(name_to_golang(Obj.get_refchain()[0]._name,  True)))
         elif Obj._type == TYPE_INT:
+            if objType not in self.defined:
+                objType = "int"
             tag = ""
             if Obj.get_classref() is not None:
                 # Force table lookup field to int
-                objName = "int"
+                objType = "int"
                 tag += " table:\"{0}\" ".format(Obj.get_classref()._name)
             tag += self.buildConstraint(Obj)["tag"]
             if tag != "":
-                fd.write("{0} `{1}`".format(objName,  tag.strip()))
+                fd.write("{0} `{1}`".format(objType,  tag.strip()))
             else:
-                fd.write("{0} ".format(objName))
+                fd.write("{0} ".format(objType))
         elif Obj._type == TYPE_OID:
             fd.write("[]byte `array:\"x\"` ")
         elif Obj._type == TYPE_OPEN:
@@ -413,6 +427,8 @@ class GoGenerator(_Generator):
                     str += name_to_golang(a, True)
                 str += ")\"`"
                 fd.write("int {0}".format(str))
+        elif Obj._type == TYPE_NULL:
+            fd.write("interface{} `type:\"null\"`")
         else:
             fd.write(" //UNHANDLED TYPE {0}".format(Obj.TYPE))                
 
@@ -476,10 +492,14 @@ class GoGenerator(_Generator):
             if ext == child._name:
                 fd.write("\tAsnEXTENSION\n")
                 ext = ""
-            fd.write("\tItem  []*{0}".format(name_to_golang(childType,  True)))
-            #self.writeType(fd,  child,  None)
-            if Obj._name == "ProtocolIE-ContainerList":
-                pass
+            childType = name_to_golang(childType,  True)
+            stype = self.lookupSimpleDefined(childType)
+            if stype.type != "":
+                childType = stype.type
+            else:
+                childType = "*" + childType
+            fd.write("\tItem  []{0}".format(childType))
+           #self.writeType(fd,  child,  None)
             c = self.buildConstraint(Obj)
             mod = ""
             # No constraints on octet string still requires array definition
@@ -551,8 +571,6 @@ class GoGenerator(_Generator):
                 Obj = Mod[obj_name]
                 str = self.gen_const_table(Obj)
                 goName = name_to_golang(obj_name,  True)
-                if goName == "Id":
-                    pass
                 if (Obj._type != TYPE_INT and Obj._type != TYPE_OCT_STR  and Obj._type != TYPE_BIT_STR and Obj._type != TYPE_ENUM and Obj._type != TYPE_STR_PRINT) or Obj._mode == MODE_SET:
                     continue
                 if modWritten == False:
@@ -633,6 +651,12 @@ class GoGenerator(_Generator):
                         stype.type = "int"
                         self.setSimpleType(stype)
                         fd.write('type {0} {1}\n'.format(goName, stype.type))
+                        fd.write("const (\n")
+                        idx = 0
+                        for a in Obj.get_root():
+                            fd.write("\t{1}_{0} {1} = {2}\n".format(name_to_golang(a,  True), goName,  idx))
+                            idx += 1
+                        fd.write(")\n")
                         self.defined[stype.name] = stype
                 else:
                     stype = GoField()
@@ -648,7 +672,7 @@ class GoGenerator(_Generator):
                     self.setSimpleType(stype)
                 continue
         fd.close()
-
+        
         # Structs
         fd = open(self.dest + "/structs.go", 'w')
         fd.write("package {0}\n\n".format(self.pkg))
@@ -666,8 +690,6 @@ class GoGenerator(_Generator):
             fd.write("********************************/\n")
             for obj_name in obj_names:
                 Obj = Mod[obj_name]
-                if obj_name == "ProtocolIE-Field":
-                    pass
                 goName = name_to_golang(obj_name,  True)
                 # If this is already defined as a simple type, skip
                 if goName in self.simpleTypes:
@@ -732,9 +754,16 @@ class GoGenerator(_Generator):
                             continue
                         x = a[b]
                         if b[0] >= 'A' and b[0] <='Z':
-                            structRef[b] = x._typeref.called[-1]
+                            structRef[b] = name_to_golang(x._typeref.called[-1],  True)
                         else:
                             valRef[b] = name_to_golang(x, True)
+                            # Is this an enum, if so prefix with type
+                            # This is bad, no comments unless positive!
+                            gt = name_to_golang(b,  True)
+                            st = self.simpleTypes[gt]
+                            if "type" in st.tags:
+                                if st.tags["type"][:4] == "enum":
+                                    valRef[b] = gt + "_" + valRef[b]
                     # Now we can instantiate the Go struct for this lookup with the specified values
                     for x in structRef:
                         struct = "{0}{{".format(x)
