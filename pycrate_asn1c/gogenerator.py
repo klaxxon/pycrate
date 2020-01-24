@@ -208,6 +208,11 @@ class GoTable():
         self.root = []
         self.ext = []
         
+class GoSet():
+    def __init__(self):
+        self.typName = ""
+        self.objNames = []
+        
 class GoGenerator(_Generator):
     """
     PycrateGenerator generates Python source code to be loaded into the pycrate
@@ -280,27 +285,23 @@ class GoGenerator(_Generator):
                 pass
             print("Table",  tbl.name,  tbl.idName,  tbl.typeRef,  len(tbl.copiedFieldNames),  len(r),  len(x))
             self.tables[table] = tbl 
-            if table == "S1AP-PROTOCOL-IES":
-                pass
-            link_name = None
-            # check if the same constraint was already defined somewhere in the root object
-            if hasattr(self, '_const_tabs'):
-                ConstTabVal = Const['tab'].get_val()
-                for ct in self._const_tabs:
-                    # HOLLY PYTHON: comparing damned complex dict values...
-                    if ConstTabVal == ct[1]:
-                        # the table of values get already compiled, just need to link it
-                        link_name = ct[0]
-                        break
-            if link_name is None:
-                # create the table set object
-                Const['tab']._pyname = '_{0}_tab'.format(Obj._name)
-                self.gen_set(Const['tab'])
-                link_name = Const['tab']._pyname
-                if not hasattr(self, '_const_tabs'):
-                    self._const_tabs = [(link_name, Const['tab'].get_val())]
-                else:
-                    self._const_tabs.append( (link_name, Const['tab'].get_val()) )
+        
+        if Obj._name == "S1SetupRequestIEs":
+            pass
+        if Obj._mode != MODE_SET:
+            return
+        if Obj._ref is not None:
+            val = Obj.get_val()
+            if len(val["root"])== 0 and len(val["ext"])==0:
+                return
+            o = GoSet()
+            o.typName = Obj.get_typeref()._name
+            if val["root"] is not None:
+                o.objNames = val["root"]
+            if val["ext"] is not None:
+                o.objNames = val["ext"]
+            self.sets[Obj._name] = o
+            pass
                     
     def gen_set(self, Obj):
         #
@@ -537,11 +538,13 @@ class GoGenerator(_Generator):
         
         
     def gen(self):
+        self.objs = {}
         self.tables = {}
         self.fieldTypes = {}
         self.defined = {}  # Types already defined
         self.structs = {}
         self.simpleTypes = {}
+        self.sets = {}
         
         if True:
             fd = open(self.dest + "/debug.html", 'w')
@@ -582,10 +585,9 @@ class GoGenerator(_Generator):
             modWritten = False
             for obj_name in obj_names:
                 Obj = Mod[obj_name]
+                self.objs[mod_name + "/" + Obj._name] = Obj
                 str = self.gen_const_table(Obj)
                 goName = name_to_golang(obj_name,  True)
-                if goName == "ENB_ID":
-                    pass
                 if (Obj._type != TYPE_INT and Obj._type != TYPE_OCT_STR  and Obj._type != TYPE_BIT_STR and Obj._type != TYPE_ENUM and Obj._type != TYPE_STR_PRINT) or Obj._mode == MODE_SET:
                     continue
                 if modWritten == False:
@@ -706,6 +708,8 @@ class GoGenerator(_Generator):
                 Obj = Mod[obj_name]
                 goName = name_to_golang(obj_name,  True)
                 # If this is already defined as a simple type, skip
+                if goName == "S1SetupRequest":
+                    pass
                 if goName in self.simpleTypes:
                     continue
                 if Obj._mode == MODE_SET or Obj._mode == MODE_VALUE or Obj.TYPE == "CLASS":
@@ -735,6 +739,57 @@ class GoGenerator(_Generator):
                         self.writeType(fd,  Obj)
                         fd.write("\n}\n")
         fd.close()
+        
+        fd = open(self.dest + "/tables.go", 'w')
+        fd.write("package {0}\n\n".format(self.pkg))
+        fd.write('import (')
+        fd.write('\t. "asn2gort"')
+        fd.write(')\n\n')
+        fd.write('// Table lookups\n')
+        fd.write('func init() {\n')        
+        for mod_name in [mn for mn in GLOBAL.MOD if mn[:1] != '_']:
+            self.currentModule = mod_name
+            self._mod_name = mod_name
+            Mod = GLOBAL.MOD[mod_name]
+            obj_names = [obj_name for obj_name in Mod.keys() if obj_name[0:1] != '_']
+            for obj_name in obj_names:
+                Obj = Mod[obj_name]
+                goName = name_to_golang(obj_name,  True)
+                if Obj._name == "InitiatingMessage":
+                    pass
+                # Does this object have a ref to an ASN1RefSet?
+                refset = None
+                for a in Obj._ref:
+                    if isinstance(a, ASN1RefSet):
+                        refset = a.called[-1]
+                        break
+                if refset is None:
+                    continue
+                tableName = refset + "_" + Obj._name
+                if refset not in self.sets:
+                    print("Missing set for refset ",  refset)
+                    continue
+                setList = self.sets[refset]
+                keyName = "procedureCode"
+                for a in setList.objNames:
+                    if Obj._name not in a:
+                        continue
+                    struct = a[Obj._name]._typeref.called[-1] + "{"
+                    vals = ""
+                    for b in a:
+                        # Only values
+                        if b[0] >= 'A' and b[0] <= 'Z':
+                            continue
+                        v = a[b]
+                        if vals != "":
+                            vals += ", "
+                        vals += "{0}: {1}".format(name_to_golang(b,  True), v)
+                    struct += vals + "}"
+                    print("AddTableRef(\"{0}\", {1}, {2})\n".format(tableName,  a[keyName], struct))
+                    pass
+        
+            
+        return
 
         fd = open(self.dest + "/tables.go", 'w')
         fd.write("package {0}\n\n".format(self.pkg))
