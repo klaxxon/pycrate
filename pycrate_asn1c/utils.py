@@ -864,5 +864,17 @@ def formatTags(tags):
         for a in tags:
             b = tags[a]
             str += "{0}:\"{1}\" ".format(a,  b)
+        str = str[:-1]
         str += "`"
     return str
+
+# Return contents list and puts single items into a list of one
+def getCList(Obj):
+    cont = Obj.get_cont()
+    if cont is None:
+        return []
+    if not hasattr(cont,  "__iter__"):
+        l = []
+        l.append(cont)
+        return l
+    return cont

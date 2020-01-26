@@ -337,7 +337,8 @@ class GoGenerator(_Generator):
         if name in self.simpleTypes:
             stype = self.simpleTypes[name]
         if name in self.defined:
-            stype.type = name
+            if stype.type != name:
+                stype.type = name
         return stype
     
     def getTags(self,  Obj):    
@@ -368,10 +369,11 @@ class GoGenerator(_Generator):
             if objType in self.simpleTypes:
                 stype = self.simpleTypes[objType]
                 stype.tags.update(self.getTags(Obj))
+                type = stype.type
                 # If this type has been defined already, use the actual type
                 if objName in self.defined:
-                    stype.type = objName
-                fd.write(" {0} {1}".format(stype.type,  formatTags(stype.tags)))
+                    type = objName
+                fd.write(" {0} {1}".format(type,  formatTags(stype.tags)))
                 return 
         if Obj._type==TYPE_SEQ  or Obj._type == TYPE_CHOICE:
             if Obj.get_refchain is not None:
@@ -587,6 +589,8 @@ class GoGenerator(_Generator):
             for obj_name in obj_names:
                 Obj = Mod[obj_name]
                 goName = name_to_golang(obj_name,  True)
+                if goName == "CSGMembershipStatus":
+                    pass
                 if (Obj._type != TYPE_INT and Obj._type != TYPE_OCT_STR  and Obj._type != TYPE_BIT_STR and Obj._type != TYPE_ENUM and Obj._type != TYPE_STR_PRINT) or Obj._mode == MODE_SET:
                     continue
                 str = ""
@@ -613,13 +617,6 @@ class GoGenerator(_Generator):
                             self.defined[stype.name] = stype
                         elif Obj._type == TYPE_OCT_STR:
                             str += "type {0} struct {{\n\tValue []byte {1}\n}}\n\n".format(goName,  formatTags(self.getTags(Obj)))
-                            '''
-                            stype = GoField(Obj._text_def)
-                            stype.name = goName
-                            stype.tags.update(constraint)
-                            stype.type = "[]byte"
-                            self.setSimpleType(stype)
-                            '''
                         elif Obj._type == TYPE_BIT_STR:
                             stype = GoField(Obj._text_def)
                             stype.name = goName
@@ -900,8 +897,6 @@ class GoGenerator(_Generator):
         # Simple type with constraint are not simple type because they require tags
         for s in self.simpleTypes:
             stype = self.simpleTypes[s]
-            if s == "TAC":
-                pass
             if not stype.saveAsStruct:
                 continue
             if s in const:
