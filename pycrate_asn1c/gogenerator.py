@@ -586,8 +586,6 @@ class GoGenerator(_Generator):
             obj_names = [obj_name for obj_name in Mod.keys() if obj_name[0:1] != '_']
             for obj_name in obj_names:
                 Obj = Mod[obj_name]
-                if Obj._name == "Correlation-ID":
-                    pass
                 goName = name_to_golang(obj_name,  True)
                 if (Obj._type != TYPE_INT and Obj._type != TYPE_OCT_STR  and Obj._type != TYPE_BIT_STR and Obj._type != TYPE_ENUM and Obj._type != TYPE_STR_PRINT) or Obj._mode == MODE_SET:
                     continue
@@ -840,9 +838,9 @@ class GoGenerator(_Generator):
                             #print("Field name {0} = {1}, {2}".format(fld._name,  refname,  defStruct))
                         if instName is not None:
                             valStruct = "{0}{{{1}}}".format(name_to_golang(fldType,  True),  valStruct[:-1])
-                            fd.write("AddTableRef(\"{0}\", {1}, {2})\n".format(obj_name,  id, valStruct))
+                            fd.write("AddTableRef(\"{0}.{1}\", {2}, {3})\n".format(obj_name,  Obj._mod,  id, valStruct))
                             o = GoTable()
-                            o.table = obj_name
+                            o.table = obj_name + "." + Obj._mod
                             o.itable = True
                             o.indexFieldName = idFieldName
                             self.tables[o.table] = o
@@ -866,8 +864,6 @@ class GoGenerator(_Generator):
             fd.write("********************************/\n")
             for obj_name in obj_names:
                 Obj = Mod[obj_name]
-                if Obj._name == "Correlation-ID":
-                    pass
                 goName = name_to_golang(obj_name,  True)
                 # If this is already defined as a simple type, skip
                 if goName in self.simpleTypes:
