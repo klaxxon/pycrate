@@ -194,20 +194,20 @@ _type_lut = {
     }
 
 class GoField():
-    def __init__(self):
+    def __init__(self,  ctxt):
         self.name = ""
         self.type = ""
         # Tags are tags["range"] = "1..10"
         self.Used = False
+        self._text_def = ctxt
+        self.saveAsStruct = False
         self.tags = {} 
 
 class GoTable():
     def __init__(self):
-        self.name = ""
-        self.idName = ""
-        self.copiedFieldNames = {}
-        self.root = []
-        self.ext = []
+        self.table = ""
+        self.indexFieldName = ""
+        self.itable = False
         
 class GoSet():
     def __init__(self):
@@ -315,51 +315,50 @@ class GoGenerator(_Generator):
 
     def buildConstraint(self,  Obj):
         c = {}
-        str = ""
         constraint = Obj.get_const()
         if len(constraint)== 0:
-            return ""
+            return c
         constraint = constraint[-1]
         if constraint['type'] == 'VAL':
-            range = constraint['text']
-            str = 'range:"{0}"'.format( range)
-            c["val"] = range
+            c["range"] = constraint['text']
         elif constraint['type'] == 'SIZE':
             range = constraint['root'][-1]
             if isinstance(range, ASN1RangeInt):
-                str = 'length:"{0}..{1}"'.format( range.lb,  range.ub)
-                c["val"] = '{0}..{1}'.format( range.lb,  range.ub)
+                c["length"] = '{0}..{1}'.format( range.lb,  range.ub)
             else:
-                str = 'length:"{0}"'.format( range)
-                c["val"] = range
+                c["length"] = range
         # Modifiers?
         if Obj.is_opt():
-            str += " mod:\"optional\""
-        c["tag"] = str
+            c["mod"] = "optional"
         return c
        
     def lookupSimpleDefined(self,  name):
-        stype = GoField()
+        stype = GoField("")
         if name in self.simpleTypes:
             stype = self.simpleTypes[name]
         if name in self.defined:
             stype.type = name
         return stype
-        
-    def getTableName(self,  Obj):
-        name = Obj.get_classref()._name
-        return name
-        
-    '''
-    def saveFieldType(self,  Obj,  fieldName):
-        if Obj._parent is None:
-            return
-        idx = Obj._parent._name + "." + Obj._name
-        self.fieldToType[idx] = fieldName
-    '''
-
-    def writeType(self,  fd,  Obj,  gft = None):
+    
+    def getTags(self,  Obj):    
+        tags = self.buildConstraint(Obj)
         tableRef = None
+        if Obj._parent is not None:
+            parentName = Obj._parent._name
+            if parentName in self.tables:
+                tableRef = self.tables[parentName]
+                if tableRef.itable:
+                    tags["itable"] = tableRef.table
+                else:
+                    if Obj._name == tableRef.indexFieldName:
+                        tags["table"] = tableRef.table
+                    else:
+                        tags["lut"] = "table"
+        if Obj.is_opt():
+            tags["mod"]  = "optional"
+        return tags
+    
+    def writeType(self,  fd,  Obj,  gft = None):
         objName = name_to_golang(Obj._name,  True)
         objType =objName
         # This could be an array of something where we get _item_ for a name.  If so resolve to the array type
@@ -368,90 +367,54 @@ class GoGenerator(_Generator):
                 objType = name_to_golang(Obj._typeref.called[-1],  True)
             if objType in self.simpleTypes:
                 stype = self.simpleTypes[objType]
-                if Obj.get_classref() is not None:
-                    stype.tags["table"]  = self.getTableName(Obj)
-                    tableRef = self.getTableName(Obj)
-                if Obj.is_opt():
-                    stype.tags["mod"]  = "optional"
+                stype.tags.update(self.getTags(Obj))
                 # If this type has been defined already, use the actual type
                 if objName in self.defined:
                     stype.type = objName
-                if len(stype.tags) > 0:
-                    fd.write(" {0} {1}".format(stype.type,  formatTags(stype.tags)))
-                else:
-                    fd.write(" {0}".format(stype.type))
-                #self.saveFieldType(Obj,  stype.type)
-                return tableRef
+                fd.write(" {0} {1}".format(stype.type,  formatTags(stype.tags)))
+                return 
         if Obj._type==TYPE_SEQ  or Obj._type == TYPE_CHOICE:
             if Obj.get_refchain is not None:
                 n = name_to_golang(Obj.get_refchain()[-1]._name,  True)
                 fd.write("*{0}".format(n))
-                #self.saveFieldType(Obj,  n)
             else: 
                 fd.write("*{0}".format(objType))
-                #self.saveFieldType(Obj,  objType)
         elif Obj._type == TYPE_SEQ_OF:
             if Obj.get_cont() is not None:
                 ref = Obj.get_cont()._typeref.called[-1]
-                '''
-                stype = self.lookupSimpleDefined(name_to_golang(ref,  True))
-                if stype.type != "":
-                    fd.write("[]{0}".format(stype.type))
-                else:
-                    fd.write("[]*{0}".format(name_to_golang(ref,  True)))
-                '''
                 gref = name_to_golang(ref,  True)
                 if gref in self.simpleTypes:
                     self.simpleTypes[gref].Used = True
                 n = name_to_golang(ref,  True)
-                fd.write("[]*{0}".format(n))
-                #self.saveFieldType(Obj,  n)
+                tags = formatTags(self.getTags(Obj))
+                fd.write("[]*{0} {1}".format(n,  tags))
             else:
                 n = name_to_golang(Obj.get_refchain()[0]._name,  True)
                 fd.write("[]*{0}".format(n))
-                #self.saveFieldType(Obj,  n)
         elif Obj._type == TYPE_INT:
             if objType not in self.defined:
                 objType = "int"
-            tag = ""
-            if Obj.get_classref() is not None:
-                # Force table lookup field to int
-                objType = "int"
-                tag += " table:\"{0}\" ".format(self.getTableName(Obj))
-            tag += self.buildConstraint(Obj)["tag"]
-            if tag != "":
-                fd.write("{0} `{1}`".format(objType,  tag.strip()))
-            else:
-                fd.write("{0} ".format(objType))
-            #self.saveFieldType(Obj,  objType)
+            tags =self.getTags(Obj)
+            tag = formatTags(tags)
+            fd.write("{0} {1}".format(objType,  tag.strip()))
         elif Obj._type == TYPE_OID:
-            fd.write("[]byte `array:\"x\"` ")
-            #self.saveFieldType(Obj,  "[]byte")
+            fd.write("[]byte `length:\"x\"` ")
         elif Obj._type == TYPE_OPEN:
-            fd.write("interface{} `type:\"table\"` ")
-            #self.saveFieldType(Obj,  "interface{}")
+            tags =self.getTags(Obj)
+            tag = formatTags(tags)
+            fd.write("interface{{}} {0}".format(tag))
         elif Obj._type == TYPE_BIT_STR:
-            fd.write("uint64 `type:\"bitstring\" {0}`".format(self.buildConstraint(Obj)["tag"]))
-            #self.saveFieldType(Obj,  "uint64")
+            tags = self.getTags(Obj)
+            tags["type"] = "bitstring"
+            fd.write("uint64 {0}".format(formatTags(tags)))
         elif Obj._type == TYPE_SEQ_OF:
-            # Do mod spearately since we are only using the constraint val
-            mod = ""
-            if Obj.is_opt():
-                mod="mod:\"optional\""
+            tags = self.getTags(Obj)
             n = name_to_golang(Obj.get_typeref()._name, True)
-            fd.write("[]{0} `array:\"{1}\" {2}`".format(n,  self.buildConstraint(Obj)["val"],  mod))
-            #self.saveFieldType(Obj,  n)
+            fd.write("[]{0} {2}".format(n,  formatTags(tags),  mod))
         elif Obj._type == TYPE_OCT_STR:
-            mod = ""
-            c = self.buildConstraint(Obj)
-            # No constraints on octet string still requires array definition
-            if Obj.is_opt():
-                mod="mod:\"optional\""
-            if c == "":  
-                fd.write("[]byte `type:\"octetstring\" array:\"x\" {0}`".format(mod))
-            else:
-                fd.write("[]byte `type:\"octetstring\" array:\"{0}\" {1}`".format(c["val"],  mod))
-            #self.saveFieldType(Obj,  "[]byte")
+            tags = self.getTags(Obj)
+            tags["type"] = "octetstring"
+            fd.write("[]byte {0}".format(formatTags(tags)))
         elif Obj._type == TYPE_ENUM:
             if Obj.get_typeref() is not None:
                 typeName = name_to_golang(Obj.get_typeref()._name,  True)
@@ -461,7 +424,6 @@ class GoGenerator(_Generator):
                     tags =  self.simpleTypes[typeName].tags
                     n = name_to_golang(typeName,  True)
                     fd.write("{0} {1}".format(n,  formatTags(tags)))
-                    #self.saveFieldType(Obj,  n)
             else:
                 str = "`type:\"enum("
                 comma = False
@@ -472,16 +434,13 @@ class GoGenerator(_Generator):
                     str += name_to_golang(a, True)
                 str += ")\"`"
                 fd.write("int {0}".format(str))
-                #self.saveFieldType(Obj,  "int")
         elif Obj._type == TYPE_NULL:
             fd.write("interface{} `type:\"null\"`")
-            #self.saveFieldType(Obj,  "interface{}")
         else:
             fd.write(" //UNHANDLED TYPE {0}".format(Obj.TYPE))             
-        return tableRef   
+        return    
 
     def writeChoice(self,  fd,  Obj):
-        tableRef = None
         fd.write("type {0} struct {{\n\tAsnCHOICE\n".format(name_to_golang(Obj._name,  True)))
         ext = ""
         if Obj._ext is not None:
@@ -496,16 +455,15 @@ class GoGenerator(_Generator):
                 fd.write("\tAsnEXTENSION\n")
                 ext = ""
             fd.write("\t{0}  ".format(childName))
-            tableRef = self.writeType(fd,  child)
+            self.writeType(fd,  child)
             fd.write("\n")
             self.gen_const_table(child)
         if ext != "":
             fd.write("\tAsnEXTENSION\n")
         fd.write("}\n")
-        return tableRef
+        return 
 
     def writeSequence(self,  fd,  Obj):
-        tableRef = None
         fd.write("type {0} struct {{\n\tAsn\n".format(name_to_golang(Obj._name,  True)))
         ext = ""
         if Obj._ext is not None:
@@ -520,17 +478,13 @@ class GoGenerator(_Generator):
                 fd.write("\tAsnEXTENSION\n")
                 ext = ""
             fd.write("\t{0}  ".format(childName))
-            tbl = self.writeType(fd,  child)
-            if tbl is not None:
-                if tableRef is None:
-                    tableRef = []
-                tableRef.append(tbl)
+            self.writeType(fd,  child)
             fd.write("\n")
             self.gen_const_table(child)
         if ext != "":
             fd.write("\tAsnEXTENSION\n")
         fd.write("}\n")
-        return tableRef
+        return 
 
     def writeSequenceOf(self,  fd,  Obj):
         fd.write("type {0} struct {{\n\tAsn\n".format(name_to_golang(Obj._name,  True)))
@@ -556,30 +510,13 @@ class GoGenerator(_Generator):
             else:
                 childType = "*" + childType
             fd.write("\tItem  []{0}".format(childType))
-            #self.saveFieldType(Obj,  childType)
-            
-            # Have to search params for "gov" and class name to find the struct name for the class
-            '''
-            if Obj.get_param() is not None:
-                for a in Obj.get_param():
-                    gov = Obj.get_param()[a]["gov"]
-                    if gov._mode == MODE_SET:
-                        cls = gov.get_classref()._name
-                        if cls not in self.classToStructName:
-                            self.classToStructName[cls] = {}
-                        self.classToStructName[cls][Obj._name] = childType
-            '''
-           #self.writeType(fd,  child,  None)
-            c = self.buildConstraint(Obj)
-            mod = ""
+            tags = self.buildConstraint(Obj)
             # No constraints on octet string still requires array definition
-            if Obj.is_opt():
-                mod="mod:\"optional\""
-            if c == "":  
-                fd.write("`array:\"x\" {0}`".format(mod))
+            if "length" not in tags:  
+                fd.write("`length:\"x\" {0}".format(buildTags(tags)))
                 self.saveFieldType(Obj,  "[]byte")
             else:
-                fd.write(" `array:\"{0}\" {1}`".format(c["val"],  mod))
+                fd.write(" {0}".format(formatTags(tags)))
             fd.write("\n")
             self.gen_const_table(child)
         if ext != "":
@@ -637,192 +574,109 @@ class GoGenerator(_Generator):
                         panic
                     self.sets[name] = Obj
 
+        # Don't write, save them since some may need to be removed because they are structs or whatnot
+        const = {}
         # Constants and basic types and enumerations
         # Constants are written out to the consts.go file.
         # All other basic types are saved for use later.
-        fd = open(self.dest + "/consts.go", 'w')
-        fd.write("package {0}\n\n".format(self.pkg))
         for mod_name in [mn for mn in GLOBAL.MOD if mn[:1] != '_']:
             self.currentModule = mod_name
             self._mod_name = mod_name
             Mod = GLOBAL.MOD[mod_name]
             obj_names = [obj_name for obj_name in Mod.keys() if obj_name[0:1] != '_']
-            modWritten = False
             for obj_name in obj_names:
                 Obj = Mod[obj_name]
                 #if Obj._type != MODE_TYPE and Obj._type != TYPE_ENUM and Obj._type != TYPE_INT and Obj._cont is not None:
                 #    self.objs[mod_name + "." + Obj._name] = Obj
                 goName = name_to_golang(obj_name,  True)
-                # Do any of this objects fields reference a class?
-                '''
-                classAdded = False
-                for a in Obj._ref:
-                    if isinstance(a,  ASN1RefClassField):
-                        self.classes[Obj._name] = Obj
-                        classAdded = True
-                        break
-                if not classAdded and Obj._type == TYPE_CLASS:
-                    self.classes[Obj._name] = Obj
-                '''
                 if (Obj._type != TYPE_INT and Obj._type != TYPE_OCT_STR  and Obj._type != TYPE_BIT_STR and Obj._type != TYPE_ENUM and Obj._type != TYPE_STR_PRINT) or Obj._mode == MODE_SET:
                     continue
-                if modWritten == False:
-                    modWritten = True
-                    fd.write("/*******************************\n")
-                    fd.write("**** Module {0}\n".format(mod_name))
-                    fd.write("********************************/\n")
-
-                constraint = Obj.get_const()
+                str = ""
+                constraint = self.getTags(Obj)
                 if Obj._mode == MODE_VALUE:
-                    fd.write('\n// {0} {1}\n'.format(obj_name,  Obj.get_typeref()))
+                    str += '\n// {0} {1}\n'.format(obj_name,  Obj.get_typeref())
                     itype = "int"
                     if Obj._typeref != None:
                         itype =  name_to_golang(Obj._typeref.called[-1],  True)
-                    fd.write('const {0} {1} = {2}\n'.format(goName, itype,  Obj._val))
+                    str += 'const {0} {1} = {2}\n'.format(goName, itype,  Obj._val)
                     self.defined[stype.name] = stype
                 elif Obj._mode == MODE_TYPE:
                     if Obj.get_root() == None:
                         # Basic type?
                         if Obj._type== TYPE_INT:
                             #fd.write("type {0} int64\n".format(goName))
-                            stype = GoField()
+                            stype = GoField(Obj._text_def)
                             stype.name = goName
-                            if constraint[-1]["type"] == "VAL":
-                                stype.tags["range"] = constraint[-1]["text"]
+                            stype.tags.update(constraint)
                             stype.type = "int"
-                            self.simpleTypes[goName] = stype
-                            fd.write('type {0} {1}\n'.format(goName, stype.type))
+                            self.setSimpleType(stype)
+                            str += 'type {0} {1}\n'.format(goName, stype.type)
                             # Basic type but also defined (const)
                             self.defined[stype.name] = stype
                         elif Obj._type == TYPE_OCT_STR:
-                            stype = GoField()
+                            stype = GoField(Obj._text_def)
                             stype.name = goName
-                            if len(constraint) > 0:
-                                if constraint[-1]["type"] == "SIZE":
-                                    stype.tags["array"] = constraint[-1]["root"][0]
+                            stype.tags.update(constraint)
                             stype.type = "[]byte"
                             self.setSimpleType(stype)
                         elif Obj._type == TYPE_BIT_STR:
-                            stype = GoField()
+                            stype = GoField(Obj._text_def)
                             stype.name = goName
-                            if len(constraint) > 0:
-                                if constraint[-1]["type"] == "SIZE":
-                                    stype.tags["length"] = constraint[-1]["root"][0]
+                            stype.tags.update(constraint)
                             stype.type = "uint64"
                             self.setSimpleType(stype)
                         elif Obj._type == TYPE_STR_PRINT:
-                            stype = GoField()
+                            stype = GoField(Obj._text_def)
                             stype.name = goName
                             stype.tags["type"] = "printablestring" 
-                            if len(constraint) > 0:
-                                if constraint[-1]["type"] == "SIZE":
-                                    stype.tags["size"] = constraint[-1]["root"][0]
+                            stype.tags.update(constraint)
                             stype.type = "string"
                             self.setSimpleType(stype)
                         else:
                             fd.write("type {0} UNKNOWN {1}\n".format(goName,  Obj.TYPE))
-                        continue
                     else:
                         # Must be enum?
-                        str = "enum("
+                        str2 = "enum("
                         comma = False
                         for a in Obj.get_root():
                             if comma:
-                                str += ", "
+                                str2 += ", "
                             comma = True
-                            str += name_to_golang(a, True)
+                            str2 += name_to_golang(a, True)
                         if Obj.get_ext() is not None:
                             if comma:
-                                str += ", "
-                            str += "..."
+                                str2 += ", "
+                            str2 += "..."
                             for a in Obj.get_ext():
-                                str += ", "
-                                str += name_to_golang(a, True)
-                        str += ")"
-                        stype = GoField()
+                                str2 += ", "
+                                str2 += name_to_golang(a, True)
+                        str2 += ")"
+                        stype = GoField(Obj._text_def)
                         stype.name = goName
-                        stype.tags["type"] = str
+                        stype.tags["type"] = str2
                         stype.type = "int"
                         self.setSimpleType(stype)
-                        fd.write('type {0} {1}\n'.format(goName, stype.type))
-                        fd.write("const (\n")
+                        str +='type {0} {1}\n'.format(goName, stype.type)
+                        str += "const (\n"
                         idx = 0
                         for a in Obj.get_root():
-                            fd.write("\t{1}_{0} {1} = {2}\n".format(name_to_golang(a,  True), goName,  idx))
+                            str += "\t{1}_{0} {1} = {2}\n".format(name_to_golang(a,  True), goName,  idx)
                             idx += 1
-                        fd.write(")\n")
+                        str += ")\n"
                         self.defined[stype.name] = stype
                 else:
-                    stype = GoField()
+                    stype = GoField(Obj._text_def)
                     stype.name = goName
-                    fd.write("\n// {0}\n{1}".format(obj_name,  self.commentCode(Obj)))
+                    str += "\n// {0}\n{1}".format(obj_name,  self.commentCode(Obj))
                     #fd.write('type {0} int64\n'.format(goName))
                     # Constraints?
-                    if constraint[-1]['type'] == 'VAL':
-                        range = constraint[-1]['text']
-                        #fd.write('//define:{0} int64 `range:"{1}"`\n'.format(goName,  range))
-                        stype.tags["range"] = range
+                    stype.tags.update(constraint)
                     stype.type = "int"
                     self.setSimpleType(stype)
-                continue
-        fd.close()
+                if str != "":
+                    const[goName] = str
         
-        # Structs
-        fd = open(self.dest + "/structs.go", 'w')
-        fd.write("package {0}\n\n".format(self.pkg))
-        fd.write('import (')
-        fd.write('\t. "asn2gort"')
-        fd.write(')\n\n')
-        for mod_name in [mn for mn in GLOBAL.MOD if mn[:1] != '_']:
-            self.currentModule = mod_name
-            self._mod_name = mod_name
-            Mod = GLOBAL.MOD[mod_name]
-            obj_names = [obj_name for obj_name in Mod.keys() if obj_name[0:1] != '_']
-            fd.write("\n/*******************************\n")
-            fd.write("**** Module {0}\n".format(mod_name))
-            fd.write("********************************/\n")
-            for obj_name in obj_names:
-                Obj = Mod[obj_name]
-                goName = name_to_golang(obj_name,  True)
-                # If this is already defined as a simple type, skip
-                if goName in self.simpleTypes:
-                    continue
-                if Obj._mode == MODE_SET or Obj._mode == MODE_VALUE or Obj.TYPE == "CLASS":
-                    continue
-                param = ""
-                if Obj.get_param() is not None:
-                    if hasattr(Obj._cont,  "_typeref"):
-                        param = Obj._cont._typeref.called[-1]
-                    elif Obj._typeref is not None:
-                        param = Obj._typeref.called[-1]
-                    #else:
-                    #    continue
-                fd.write('\n/* {0}, Mode {1}, TYPE {2}, Param {3}  */\n'.format(obj_name,  Obj._mode,  Obj.TYPE,  param))
-                fd.write(self.commentCode(Obj))
-                #if Obj.get_param() is not None:
-                #    continue
-                if Obj._mode == MODE_TYPE:
-                    if Obj.TYPE == "CHOICE":
-                        tableRef = self.writeChoice(fd,  Obj)
-                    elif Obj.TYPE == "SEQUENCE":
-                        tableRef = self.writeSequence(fd,  Obj)
-                    elif Obj.TYPE == "SEQUENCE OF":
-                        tableRef = self.writeSequenceOf(fd,  Obj)
-                    else:
-                        fd.write("type! {0} struct {{\n\tAsn\n".format(goName))
-                        fd.write("\tValue  ")
-                        tableRef = self.writeType(fd,  Obj)
-                        fd.write("\n}\n")
-        fd.close()
-
-        fd = open(self.dest + "/types.go", 'w')
-        fd.write("package {0}\n\n".format(self.pkg))
-        for s in self.simpleTypes:
-            stype = self.simpleTypes[s]
-            if not stype.Used:
-                continue
-            fd.write("type {0} {1}\n".format(s,  stype.type))
-        fd.close()
+        
 
         fd = open(self.dest + "/tables.go", 'w')
         fd.write("package {0}\n\n".format(self.pkg))
@@ -861,13 +715,6 @@ class GoGenerator(_Generator):
                                 refCnt+=1
                         if refCnt == len(Obj._ref):
                             refClass = True
-                #print("{0}.{1} {2}/{3}  [{4}]    ***** {5}".format(mod_name,  Obj._name,  Obj._type,   refchild,  refClass,refset))
-                if Obj._name == "InitiatingMessage":
-                    print("Here!")
-                    pass
-                if Obj._name == "S1SetupRequest":
-                    print("Here!")
-                    pass
                 # We have the object struct and the set it references, now all we do is create a lookup table entry with the default values.
                 # Obj = Who we are adding table lookup
                 # refset = Name of the set we will iterate over to add the specific table lookups and default values
@@ -886,6 +733,7 @@ class GoGenerator(_Generator):
                         #    instName = fld.get_cont()._typeref.called[-1]
                         id = None
                         instName = None
+                        ifFieldName = None
                         for a in cont:
                             fld = cont[a]
                             fldName = name_to_golang(fld._name,  True)
@@ -895,7 +743,11 @@ class GoGenerator(_Generator):
                                 instName = refname
                                 # If this is referencing another type, use it
                                 valRef = setInst[refname]._typeref
-                                valStruct += "{0}:{1}{{}},".format(fldName,  name_to_golang(valRef.called[-1], True))
+                                iName = valRef.called[-1]
+                                valStruct += "{0}:{1}{{}},".format(fldName,  name_to_golang(iName, True))
+                                # If valRef is in simpleTypes, set flag so it is saved as a struct, not a simple type
+                                if valRef in self.simpleTypes:
+                                    self.simpleTypes[valRef].saveAsStruct = True
                                 continue
                             if fld._name not in setInst:
                                 continue
@@ -903,6 +755,7 @@ class GoGenerator(_Generator):
                             # Table ID?
                             if fld._const[0]["at"] is None:
                                 id = val
+                                idFieldName = a
                             # If the type is ENUM, we need to add the name to the beginning
                             if fld._type == TYPE_ENUM:
                                 ename = fld.get_refchain()[0]._typeref.called[-1]
@@ -913,6 +766,11 @@ class GoGenerator(_Generator):
                         if instName is not None:
                             valStruct = "{0}{{{1}}}".format(instName,  valStruct[:-1])
                             fd.write("AddTableRef(\"{0}.{1}\",{2},{3})\n".format(rset.name,  rset.modName,  id,  valStruct))
+                            o = GoTable()
+                            o.table = instName
+                            o.itable = False
+                            o.indexFieldName = idFieldName
+                            self.tables[o.table] = o
                 else:
                     # In this case we are doing a lookup for each field mapped to a table
                     cont = Obj.get_cont()
@@ -945,6 +803,7 @@ class GoGenerator(_Generator):
                         #    instName = fld.get_cont()._typeref.called[-1]
                         id = None
                         instName = None
+                        idFieldName = None
                         for a in cont:
                             fld = cont[a]
                             fldName = name_to_golang(fld._name,  True)
@@ -959,6 +818,9 @@ class GoGenerator(_Generator):
                                 else:
                                     valRef = name_to_golang(setInst[refname]._typeref.called[-1],  True)
                                     valStruct += "{0}:{1}{{}},".format(fldName,  valRef)
+                                    # If valRef is in simpleTypes, set flag so it is saved as a struct, not a simple type
+                                    if valRef in self.simpleTypes:
+                                        self.simpleTypes[valRef].saveAsStruct = True
                                 continue
                             if fld._name not in setInst:
                                 continue
@@ -966,6 +828,7 @@ class GoGenerator(_Generator):
                             # Table ID?
                             if fld._const[0]["at"] is None:
                                 id = val
+                                idFieldName = a
                             # If the type is ENUM, we need to add the name to the beginning
                             if fld._type == TYPE_ENUM:
                                 ename = fld.get_refchain()[0]._typeref.called[-1]
@@ -975,5 +838,94 @@ class GoGenerator(_Generator):
                         if instName is not None:
                             valStruct = "{0}{{{1}}}".format(name_to_golang(fldType,  True),  valStruct[:-1])
                             fd.write("AddTableRef(\"{0}\", {1}, {2})\n".format(obj_name,  id, valStruct))
+                            o = GoTable()
+                            o.table = obj_name
+                            o.itable = True
+                            o.indexFieldName = idFieldName
+                            self.tables[o.table] = o
         fd.write('}\n')        
+        fd.close()
+                
+        
+        # Structs
+        fd = open(self.dest + "/structs.go", 'w')
+        fd.write("package {0}\n\n".format(self.pkg))
+        fd.write('import (')
+        fd.write('\t. "asn2gort"')
+        fd.write(')\n\n')
+        for mod_name in [mn for mn in GLOBAL.MOD if mn[:1] != '_']:
+            self.currentModule = mod_name
+            self._mod_name = mod_name
+            Mod = GLOBAL.MOD[mod_name]
+            obj_names = [obj_name for obj_name in Mod.keys() if obj_name[0:1] != '_']
+            fd.write("\n/*******************************\n")
+            fd.write("**** Module {0}\n".format(mod_name))
+            fd.write("********************************/\n")
+            for obj_name in obj_names:
+                Obj = Mod[obj_name]
+                goName = name_to_golang(obj_name,  True)
+                # If this is already defined as a simple type, skip
+                if goName in self.simpleTypes:
+                    continue
+                if Obj._mode == MODE_SET or Obj._mode == MODE_VALUE or Obj.TYPE == "CLASS":
+                    continue
+                param = ""
+                if Obj.get_param() is not None:
+                    if hasattr(Obj._cont,  "_typeref"):
+                        param = Obj._cont._typeref.called[-1]
+                    elif Obj._typeref is not None:
+                        param = Obj._typeref.called[-1]
+                    #else:
+                    #    continue
+                fd.write('\n/* {0}, Mode {1}, TYPE {2}, Param {3}  */\n'.format(obj_name,  Obj._mode,  Obj.TYPE,  param))
+                fd.write(self.commentCode(Obj))
+                #if Obj.get_param() is not None:
+                #    continue
+                if Obj._mode == MODE_TYPE:
+                    if Obj._name in const:
+                        del const[Obj._name]
+                    if Obj.TYPE == "CHOICE":
+                        tableRef = self.writeChoice(fd,  Obj)
+                    elif Obj.TYPE == "SEQUENCE":
+                        tableRef = self.writeSequence(fd,  Obj)
+                    elif Obj.TYPE == "SEQUENCE OF":
+                        tableRef = self.writeSequenceOf(fd,  Obj)
+                    else:
+                        fd.write("type! {0} struct {{\n\tAsn\n".format(goName))
+                        fd.write("\tValue  ")
+                        tableRef = self.writeType(fd,  Obj)
+                        fd.write("\n}\n")
+
+        # Simple type with constraint are not simple type because they require tags
+        for s in self.simpleTypes:
+            stype = self.simpleTypes[s]
+            if s == "TAC":
+                pass
+            if not stype.saveAsStruct:
+                continue
+            if s in const:
+                del const[s]
+            fd.write(self.commentCode(stype))
+            fd.write("type {0} struct {{\n\tValue {1} {2}\n}}\n\n".format(s,  stype.type,  formatTags(stype.tags)))
+        fd.close()
+
+        fd = open(self.dest + "/types.go", 'w')
+        fd.write("package {0}\n\n".format(self.pkg))
+        for s in self.simpleTypes:
+            stype = self.simpleTypes[s]
+            if not stype.Used or stype.saveAsStruct:
+                continue
+            # If this has a constraint, it cannot be a simple type because it requires tags
+            if len(stype.tags) > 0:
+                continue
+            fd.write(self.commentCode(stype))
+            fd.write("type {0} {1}\n".format(s,  stype.type))
+        fd.close()
+
+        fd = open(self.dest + "/consts.go", 'w')
+        fd.write("package {0}\n\n".format(self.pkg))
+        for c in const:
+            if c == "TAC":
+                pass
+            fd.write(const[c] + "\n")
         fd.close()
