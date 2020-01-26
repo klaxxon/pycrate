@@ -586,8 +586,8 @@ class GoGenerator(_Generator):
             obj_names = [obj_name for obj_name in Mod.keys() if obj_name[0:1] != '_']
             for obj_name in obj_names:
                 Obj = Mod[obj_name]
-                #if Obj._type != MODE_TYPE and Obj._type != TYPE_ENUM and Obj._type != TYPE_INT and Obj._cont is not None:
-                #    self.objs[mod_name + "." + Obj._name] = Obj
+                if Obj._name == "Correlation-ID":
+                    pass
                 goName = name_to_golang(obj_name,  True)
                 if (Obj._type != TYPE_INT and Obj._type != TYPE_OCT_STR  and Obj._type != TYPE_BIT_STR and Obj._type != TYPE_ENUM and Obj._type != TYPE_STR_PRINT) or Obj._mode == MODE_SET:
                     continue
@@ -614,11 +614,14 @@ class GoGenerator(_Generator):
                             # Basic type but also defined (const)
                             self.defined[stype.name] = stype
                         elif Obj._type == TYPE_OCT_STR:
+                            str += "type {0} struct {{\n\tValue []byte {1}\n}}\n\n".format(goName,  formatTags(self.getTags(Obj)))
+                            '''
                             stype = GoField(Obj._text_def)
                             stype.name = goName
                             stype.tags.update(constraint)
                             stype.type = "[]byte"
                             self.setSimpleType(stype)
+                            '''
                         elif Obj._type == TYPE_BIT_STR:
                             stype = GoField(Obj._text_def)
                             stype.name = goName
@@ -863,9 +866,13 @@ class GoGenerator(_Generator):
             fd.write("********************************/\n")
             for obj_name in obj_names:
                 Obj = Mod[obj_name]
+                if Obj._name == "Correlation-ID":
+                    pass
                 goName = name_to_golang(obj_name,  True)
                 # If this is already defined as a simple type, skip
                 if goName in self.simpleTypes:
+                    continue
+                if goName in const:
                     continue
                 if Obj._mode == MODE_SET or Obj._mode == MODE_VALUE or Obj.TYPE == "CLASS":
                     continue
@@ -882,8 +889,6 @@ class GoGenerator(_Generator):
                 #if Obj.get_param() is not None:
                 #    continue
                 if Obj._mode == MODE_TYPE:
-                    if Obj._name in const:
-                        del const[Obj._name]
                     if Obj.TYPE == "CHOICE":
                         tableRef = self.writeChoice(fd,  Obj)
                     elif Obj.TYPE == "SEQUENCE":
