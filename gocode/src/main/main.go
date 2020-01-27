@@ -9,12 +9,14 @@ import (
 func main() {
 	x := &s1ap.S1AP_PDU{}
 	if err := PreLoad(x); err != nil {
-		fmt.Print(err)
+		fmt.Print(err, DumpDebugInfo())
 		return
 	}
-	d := NewPERDecoderFromString("0011003F000004003B00080000F11000070800003C400A0380617269632D654E42004000190300030000F1100002C000F11000028000F11000024000F1100089000100", true)
+	d := NewPERDecoderFromString("0011002d000004003b00080009f107000019b0003c400a0380737273656e62303100400007000001c009f1070089400140", true)
 	err := d.Unmarshal(x)
 	if err != nil {
-		fmt.Print(err, DumpDebugInfo())
+		fmt.Print(err)
 	}
+	fmt.Print(DumpDebugInfo())
+	fmt.Println(DumpStruct(x))
 }
