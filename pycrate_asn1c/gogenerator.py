@@ -325,6 +325,11 @@ class GoGenerator(_Generator):
         constraint = Obj.get_const()
         if len(constraint)== 0:
             return c
+        # Any table reference? Maybe this is the lookup key?
+        for a in constraint:
+            if "at" in a:
+                if a["at"] is None:
+                    c["itableIdx"] = "1"
         constraint = constraint[-1]
         if constraint['type'] == 'VAL':
             c["range"] = constraint['text']
@@ -334,6 +339,7 @@ class GoGenerator(_Generator):
                 c["length"] = '{0}..{1}'.format( range.lb,  range.ub)
             else:
                 c["length"] = range
+                
         # Modifiers?
         if Obj.is_opt():
             c["mod"] = "optional"
@@ -396,10 +402,12 @@ class GoGenerator(_Generator):
                     self.simpleTypes[gref].Used = True
                 n = name_to_golang(ref,  True)
                 tags = formatTags(self.getTags(Obj))
-                fd.write("[]*{0} {1}".format(n,  tags))
+                if "length" not in tags:
+                    tags["length"] = "x"
+                fd.write("[]{0} {1}".format(n,  tags))
             else:
                 n = name_to_golang(Obj.get_refchain()[0]._name,  True)
-                fd.write("[]*{0}".format(n))
+                fd.write("[]{0}".format(n))
         elif Obj._type == TYPE_INT:
             if objType not in self.defined:
                 objType = "int"
@@ -423,6 +431,8 @@ class GoGenerator(_Generator):
         elif Obj._type == TYPE_OCT_STR:
             tags = self.getTags(Obj)
             tags["type"] = "octetstring"
+            if "length" not in tags:
+                tags["length"] = "x"
             fd.write("[]byte {0}".format(formatTags(tags)))
         elif Obj._type == TYPE_ENUM:
             if Obj.get_typeref() is not None:
@@ -596,8 +606,6 @@ class GoGenerator(_Generator):
             for obj_name in obj_names:
                 Obj = Mod[obj_name]
                 goName = name_to_golang(obj_name,  True)
-                if goName == "CSGMembershipStatus":
-                    pass
                 if (Obj._type != TYPE_INT and Obj._type != TYPE_OCT_STR  and Obj._type != TYPE_BIT_STR and Obj._type != TYPE_ENUM and Obj._type != TYPE_STR_PRINT) or Obj._mode == MODE_SET:
                     continue
                 str = ""
@@ -623,7 +631,10 @@ class GoGenerator(_Generator):
                             # Basic type but also defined (const)
                             self.defined[stype.name] = stype
                         elif Obj._type == TYPE_OCT_STR:
-                            str += "type {0} struct {{\n\tValue []byte {1}\n}}\n\n".format(goName,  formatTags(self.getTags(Obj)))
+                            tags = self.getTags(Obj)
+                            if "length" not in tags:
+                                tags["length"] = "x"
+                            str += "type {0} struct {{\n\tValue []byte {1}\n}}\n\n".format(goName,  formatTags(tags))
                         elif Obj._type == TYPE_BIT_STR:
                             stype = GoField(Obj._text_def)
                             stype.name = goName
@@ -820,8 +831,8 @@ class GoGenerator(_Generator):
                                 instName = refname
                                 # If this is referencing another type, use it
                                 if setInst[refname]._typeref is None:
-                                    valRef = "\"TODO!\"" #setInst[refname]._type
-                                    valStruct += "{0}:{1},".format(fldName,  valRef)
+                                    valRef = name_to_golang(setInst[refname]._type,  True)
+                                    valStruct += "{0}:{1}{{}},".format(fldName,  valRef)
                                 else:
                                     valRef = name_to_golang(setInst[refname]._typeref.called[-1],  True)
                                     valStruct += "{0}:{1}{{}},".format(fldName,  valRef)
@@ -918,6 +929,8 @@ class GoGenerator(_Generator):
         fd = open(self.dest + "/types.go", 'w')
         fd.write("package {0}\n\n".format(self.pkg))
         fd.write("// PyCrate GoGenerator revision {0}\n".format(self.revision))
+        # Common types
+        fd.write("type OCTET_STRING struct {\n\tValue string `type:\"octetstring\"`\n}\n\n")
         for s in self.simpleTypes:
             stype = self.simpleTypes[s]
             if not stype.Used or stype.saveAsStruct:
@@ -933,7 +946,5 @@ class GoGenerator(_Generator):
         fd.write("package {0}\n\n".format(self.pkg))
         fd.write("// PyCrate GoGenerator revision {0}\n".format(self.revision))
         for c in const:
-            if c == "TAC":
-                pass
             fd.write(const[c] + "\n")
         fd.close()
