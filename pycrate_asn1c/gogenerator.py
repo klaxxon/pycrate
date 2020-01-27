@@ -35,10 +35,17 @@ from .glob   import *
 from .setobj import *
 from .refobj import *
 from .asnobj import get_asnobj, ASN1Obj, INT, OID
+import subprocess
+
+def svnversion():
+    p = subprocess.Popen("svnversion", stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    (stdout, stderr) = p.communicate()
+    return stdout
 
 class _Generator(object):
     
     def __init__(self, dest='/tmp/dst.txt'):
+        self.revision = svnversion()
         self.dest = dest
         self.indent = 0
         pkg = self.dest
@@ -345,9 +352,9 @@ class GoGenerator(_Generator):
         tags = self.buildConstraint(Obj)
         tableRef = None
         if Obj._parent is not None:
-            parentName = Obj._parent._name
-            if parentName in self.tables:
-                tableRef = self.tables[parentName]
+            tblName =  Obj._parent._name + "." + Obj._parent._mod
+            if tblName in self.tables:
+                tableRef = self.tables[tblName]
                 if tableRef.itable:
                     tags["itable"] = tableRef.table
                 else:
@@ -681,6 +688,7 @@ class GoGenerator(_Generator):
         fd.write('import (')
         fd.write('\t. "asn2gort"')
         fd.write(')\n\n')
+        fd.write("// PyCrate GoGenerator revision {0}\n".format(self.revision))
         fd.write('// Table lookups\n')
         fd.write('func init() {\n')        
         for mod_name in [mn for mn in GLOBAL.MOD if mn[:1] != '_']:
@@ -763,9 +771,10 @@ class GoGenerator(_Generator):
                         # If instName is None, there is no mapping to this enty
                         if instName is not None:
                             valStruct = "{0}{{{1}}}".format(instName,  valStruct[:-1])
-                            fd.write("AddTableRef(\"{0}.{1}\",{2},{3})\n".format(rset.name,  rset.modName,  id,  valStruct))
+                            tblName = instName + "." + rset.modName
+                            fd.write("AddTableRef(\"{0}\",{1},{2})\n".format(tblName,  id,  valStruct))
                             o = GoTable()
-                            o.table = instName
+                            o.table = tblName
                             o.itable = False
                             o.indexFieldName = idFieldName
                             self.tables[o.table] = o
@@ -851,6 +860,7 @@ class GoGenerator(_Generator):
         fd.write('import (')
         fd.write('\t. "asn2gort"')
         fd.write(')\n\n')
+        fd.write("// PyCrate GoGenerator revision {0}\n".format(self.revision))
         for mod_name in [mn for mn in GLOBAL.MOD if mn[:1] != '_']:
             self.currentModule = mod_name
             self._mod_name = mod_name
@@ -907,6 +917,7 @@ class GoGenerator(_Generator):
 
         fd = open(self.dest + "/types.go", 'w')
         fd.write("package {0}\n\n".format(self.pkg))
+        fd.write("// PyCrate GoGenerator revision {0}\n".format(self.revision))
         for s in self.simpleTypes:
             stype = self.simpleTypes[s]
             if not stype.Used or stype.saveAsStruct:
@@ -920,6 +931,7 @@ class GoGenerator(_Generator):
 
         fd = open(self.dest + "/consts.go", 'w')
         fd.write("package {0}\n\n".format(self.pkg))
+        fd.write("// PyCrate GoGenerator revision {0}\n".format(self.revision))
         for c in const:
             if c == "TAC":
                 pass
