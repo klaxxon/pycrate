@@ -351,7 +351,7 @@ class GoGenerator(_Generator):
                 
             if "at" in a:
                 if a["at"] is None:
-                    c["itableIdx"] = "1"
+                    c["tableIdx"] = "1"
 
         # Modifiers?
         if Obj.is_opt():
@@ -401,11 +401,12 @@ class GoGenerator(_Generator):
                 fd.write(" {0} {1}".format(type,  formatTags(tags)))
                 return 
         if Obj._type==TYPE_SEQ  or Obj._type == TYPE_CHOICE:
-            if Obj.get_refchain is not None:
-                n = name_to_golang(Obj.get_refchain()[-1]._name,  True)
-                fd.write("*{0}".format(n))
-            else: 
-                fd.write("*{0}".format(objType))
+            #if Obj.get_refchain is not None:
+            #    n = name_to_golang(Obj.get_refchain()[-1]._name,  True)
+            #    fd.write("*{0}".format(n))
+            #else: 
+            #    fd.write("*{0}".format(objType))
+            fd.write("*{0}".format(objType))
         elif Obj._type == TYPE_SEQ_OF:
             if Obj.get_cont() is not None:
                 ref = Obj.get_cont()._typeref.called[-1]
@@ -526,6 +527,12 @@ class GoGenerator(_Generator):
             fd.write("\tAsnEXTENSION\n")
         fd.write("}\n")
         return 
+        
+    def getLowestNonClassType(self,  Obj):
+        type = None
+        if Obj._typeref is not None:
+            type = name_to_golang(Obj._typeref.called[-1],  True)
+        return type
 
     def writeSequenceOf(self,  fd,  Obj):
         fd.write("type {0} struct {{\n\tAsn\n".format(name_to_golang(Obj._name,  True)))
@@ -538,6 +545,7 @@ class GoGenerator(_Generator):
         if Obj._cont is not None:
             child = Obj._cont
             #childName = name_to_golang(child._name,  True)
+
             childType = None
             if child._typeref is not None:
                 childType = name_to_golang(child._typeref.called[-1],  True)
@@ -586,7 +594,25 @@ class GoGenerator(_Generator):
             return None
         enumName = fld.get_refchain()[-1]._name
         return enumName
-        
+    
+    def writeCSV(self, fd, prefix,  Obj):
+        r = Obj._ref
+        if r is not None:
+            s = ""
+            for a in r:
+                s += a.called[-1] + ", "
+            r = s
+        fd.write("\"{0}{1}\"\t\"{2}\"\t\"{3}\"\t\"{4}\"\t\"{5}\"\t\"{6}\"\t\"{7}\"\t\"{8}\"\n".format(prefix, 
+            Obj._name,  
+            Obj.TYPE, 
+            Obj._mode,   
+            Obj._typeref, 
+            clean(Obj.get_classref()), 
+            clean(Obj.get_param() is not None), 
+            clean(Obj.get_refchain()), 
+            clean(r)
+        ))
+
     def gen(self):
         #self.objs = {}
         self.tables = {}
@@ -600,7 +626,9 @@ class GoGenerator(_Generator):
         self.setToStruct = {} # For the set name, which structs are using it
         #self.fieldToType = {} # struct.field = fieldtype
         #self.classes = {} # Class name to object
-        
+
+        fd = open(self.dest + "/obj.csv", 'w')
+        fd.write("_name\tType\tMode\t_typeref\tget_classref()\t_getparam()\tget_refchain()\t_ref\n")
         for mod_name in [mn for mn in GLOBAL.MOD if mn[:1] != '_']:
             self.currentModule = mod_name
             self._mod_name = mod_name
@@ -609,12 +637,29 @@ class GoGenerator(_Generator):
             modWritten = False
             for obj_name in obj_names:
                 Obj = Mod[obj_name]
-                str = self.gen_const_table(Obj)
                 if Obj._param is not None and Obj._mode == MODE_TYPE:
                     name = "###" + Obj._name
                     if name in self.sets:
                         panic
                     self.sets[name] = Obj
+                if Obj._type == TYPE_INT or Obj._type == TYPE_CLASS:
+                    continue
+                self.writeCSV(fd, "",  Obj)
+                const = getCList(Obj)
+                '''
+                if not hasattr(const,  "__iter__"):
+                    a = {}
+                    a[const._name] = const
+                    const = a
+                    '''
+                for a in const:
+                    c = const[a]
+                    if not hasattr(c, "_name"):
+                        continue
+                    self.writeCSV(fd, "--->",  c)
+                
+                str = self.gen_const_table(Obj)
+        fd.close()
 
         # Don't write, save them since some may need to be removed because they are structs or whatnot
         const = {}
@@ -733,6 +778,8 @@ class GoGenerator(_Generator):
             obj_names = [obj_name for obj_name in Mod.keys() if obj_name[0:1] != '_']
             for obj_name in obj_names:
                 Obj = Mod[obj_name]
+                if Obj._name == "HandoverRequired":
+                    pass
                 if Obj._type == TYPE_CLASS:
                     continue
                 # Search through the objects contents for a field with reference to a set
@@ -741,7 +788,10 @@ class GoGenerator(_Generator):
                 refchild = []
                 if Obj._ref is not None:
                     for a in Obj._ref:
-                        if isinstance(a,  ASN1RefSet):
+                        if isinstance(a,  ASN1RefType):
+                            refObj = GLOBAL.MOD[a.called[0]][a.called[1]]
+                            pass
+                        elif isinstance(a,  ASN1RefSet):
                             # Found it, return the name of set
                             refset = a.called[0] + "." + a.called[1]
                         elif isinstance(a,  ASN1RefClassField):
@@ -817,6 +867,7 @@ class GoGenerator(_Generator):
                             self.tables[o.table] = o
                 else:
                     # In this case we are doing a lookup for each field mapped to a table
+                    '''
                     cont = Obj.get_cont()
                     if not hasattr(cont,  "__iter__"):
                         continue
@@ -830,6 +881,8 @@ class GoGenerator(_Generator):
                                 break
                     if fldType == None:
                         continue
+                    '''
+                    fldType = refObj._name
                     className = "###" + fldType
                     if className not in self.sets:
                         print("Could not find field definition for {0} in self.sets".format(className))
@@ -908,8 +961,6 @@ class GoGenerator(_Generator):
             fd.write("********************************/\n")
             for obj_name in obj_names:
                 Obj = Mod[obj_name]
-                if Obj._name == "E-RABToBeSetupListCtxtSUReq":
-                    pass
                 goName = name_to_golang(obj_name,  True)
                 # If this is already defined as a simple type, skip
                 if goName in self.simpleTypes:
@@ -976,3 +1027,9 @@ class GoGenerator(_Generator):
         for c in const:
             fd.write(const[c] + "\n")
         fd.close()
+
+def clean(s):
+    if s is None:
+        return s
+    s = "{0}".format(s)
+    return s.replace('\n', ' ').replace('\r', '').replace('\t', ' ')

@@ -872,9 +872,9 @@ def formatTags(tags):
 def getCList(Obj):
     cont = Obj.get_cont()
     if cont is None:
-        return []
+        return {}
     if not hasattr(cont,  "__iter__"):
-        l = []
-        l.append(cont)
+        l = {}
+        l[cont._name]= cont
         return l
     return cont
