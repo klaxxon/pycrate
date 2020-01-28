@@ -45,7 +45,7 @@ def svnversion():
 class _Generator(object):
     
     def __init__(self, dest='/tmp/dst.txt'):
-        self.revision = svnversion()
+        self.revision = svnversion().strip()
         self.dest = dest
         self.indent = 0
         pkg = self.dest
@@ -730,7 +730,7 @@ class GoGenerator(_Generator):
         fd.write('import (')
         fd.write('\t. "asn2gort"')
         fd.write(')\n\n')
-        fd.write("// PyCrate GoGenerator revision {0}\n".format(self.revision))
+        fd.write("// const ASNGORVER string = \"{0}\"\n".format(self.revision))
         fd.write('// Table lookups\n')
         fd.write('func init() {\n')        
         for mod_name in [mn for mn in GLOBAL.MOD if mn[:1] != '_']:
@@ -902,7 +902,7 @@ class GoGenerator(_Generator):
         fd.write('import (')
         fd.write('\t. "asn2gort"')
         fd.write(')\n\n')
-        fd.write("// PyCrate GoGenerator revision {0}\n".format(self.revision))
+        fd.write("// const ASNGORVER string = \"{0}\"\n".format(self.revision))
         for mod_name in [mn for mn in GLOBAL.MOD if mn[:1] != '_']:
             self.currentModule = mod_name
             self._mod_name = mod_name
@@ -959,7 +959,7 @@ class GoGenerator(_Generator):
 
         fd = open(self.dest + "/types.go", 'w')
         fd.write("package {0}\n\n".format(self.pkg))
-        fd.write("// PyCrate GoGenerator revision {0}\n".format(self.revision))
+        fd.write("// const ASNGORVER string = \"{0}\"\n".format(self.revision))
         # Common types
         fd.write("type OCTET_STRING struct {\n\tValue string `type:\"octetstring\"`\n}\n\n")
         for s in self.simpleTypes:
@@ -975,7 +975,7 @@ class GoGenerator(_Generator):
 
         fd = open(self.dest + "/consts.go", 'w')
         fd.write("package {0}\n\n".format(self.pkg))
-        fd.write("// PyCrate GoGenerator revision {0}\n".format(self.revision))
+        fd.write("const ASNGORVER string = \"{0}\"\n".format(self.revision))
         for c in const:
             fd.write(const[c] + "\n")
         fd.close()
