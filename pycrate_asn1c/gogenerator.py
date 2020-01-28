@@ -265,8 +265,6 @@ class GoGenerator(_Generator):
                 name =Obj._typeref.ced_path[-1]
                 tableName = Obj._typeref.called[-1]
                 #self.tableIndexNames[tableName] = name
-        if Obj._name == "CellTrafficTrace":
-            pass
         # Only interested in top level structs
         if Obj._parent is None:
             if hasattr(Obj._cont,  "__iter__"):
@@ -320,9 +318,8 @@ class GoGenerator(_Generator):
         # now generate the set of values
         #self.wrl('{0}._val1 = {1}'.format(Obj._pyname, set_to_defin(ASN1Set(Obj._val), Obj, self)))
 
+    # Simply returns a dict of "range" and/or "opt", "itableidx"
     def buildConstraint(self,  Obj):
-        range = ""
-        length = ""
         c = {}
         constraint = Obj.get_const()
         if len(constraint)== 0:
@@ -359,7 +356,6 @@ class GoGenerator(_Generator):
         # Modifiers?
         if Obj.is_opt():
             c["mod"] = "optional"
-        #print("{0} {1}".format(Obj._name,  c))
         return c
        
     def lookupSimpleDefined(self,  name):
@@ -385,8 +381,6 @@ class GoGenerator(_Generator):
                         tags["table"] = tableRef.table
                     else:
                         tags["lut"] = "table"
-        if Obj.is_opt():
-            tags["mod"]  = "optional"
         return tags
     
     def writeType(self,  fd,  Obj,  gft = None):
@@ -398,12 +392,13 @@ class GoGenerator(_Generator):
                 objType = name_to_golang(Obj._typeref.called[-1],  True)
             if objType in self.simpleTypes:
                 stype = self.simpleTypes[objType]
-                stype.tags.update(self.getTags(Obj))
+                tags = stype.tags.copy()
+                tags.update(self.getTags(Obj))
                 type = stype.type
                 # If this type has been defined already, use the actual type
                 if objName in self.defined:
                     type = objName
-                fd.write(" {0} {1}".format(type,  formatTags(stype.tags)))
+                fd.write(" {0} {1}".format(type,  formatTags(tags)))
                 return 
         if Obj._type==TYPE_SEQ  or Obj._type == TYPE_CHOICE:
             if Obj.get_refchain is not None:
@@ -913,6 +908,8 @@ class GoGenerator(_Generator):
             fd.write("********************************/\n")
             for obj_name in obj_names:
                 Obj = Mod[obj_name]
+                if Obj._name == "E-RABToBeSetupListCtxtSUReq":
+                    pass
                 goName = name_to_golang(obj_name,  True)
                 # If this is already defined as a simple type, skip
                 if goName in self.simpleTypes:
