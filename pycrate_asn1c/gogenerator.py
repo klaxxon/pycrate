@@ -321,28 +321,45 @@ class GoGenerator(_Generator):
         #self.wrl('{0}._val1 = {1}'.format(Obj._pyname, set_to_defin(ASN1Set(Obj._val), Obj, self)))
 
     def buildConstraint(self,  Obj):
+        range = ""
+        length = ""
         c = {}
         constraint = Obj.get_const()
         if len(constraint)== 0:
             return c
+        ext = None
         # Any table reference? Maybe this is the lookup key?
         for a in constraint:
+            if "ext" in a:
+                ext = a["ext"]
+                if ext is not None:
+                    if len(ext) > 0:
+                        pass
+            if "root" in a:
+                val = ""
+                for b in a["root"]:
+                    if isinstance(b, ASN1RangeInt):
+                        if len(val) > 0:
+                            val += ","
+                        val += '{0}..{1}'.format( b.lb,  b.ub)
+                    elif isinstance(b,  int):
+                        if len(val) > 0:
+                            val += ","
+                        val += "{0}".format(b)
+                    else:
+                        val = range
+                if ext is not None:
+                    val += ",..."
+                c["range"] = val
+                
             if "at" in a:
                 if a["at"] is None:
                     c["itableIdx"] = "1"
-        constraint = constraint[-1]
-        if constraint['type'] == 'VAL':
-            c["range"] = constraint['text']
-        elif constraint['type'] == 'SIZE':
-            range = constraint['root'][-1]
-            if isinstance(range, ASN1RangeInt):
-                c["length"] = '{0}..{1}'.format( range.lb,  range.ub)
-            else:
-                c["length"] = range
-                
+
         # Modifiers?
         if Obj.is_opt():
             c["mod"] = "optional"
+        #print("{0} {1}".format(Obj._name,  c))
         return c
        
     def lookupSimpleDefined(self,  name):
@@ -401,13 +418,14 @@ class GoGenerator(_Generator):
                 if gref in self.simpleTypes:
                     self.simpleTypes[gref].Used = True
                 n = name_to_golang(ref,  True)
-                tags = formatTags(self.getTags(Obj))
-                if "length" not in tags:
-                    tags["length"] = "x"
-                fd.write("[]{0} {1}".format(n,  tags))
+                tags = self.getTags(Obj)
+                if "range" in tags:
+                    tags["length"] = tags["range"]
+                    del tags["range"]
+                fd.write("[]*{0} {1}".format(n,  formatTags(tags)))
             else:
                 n = name_to_golang(Obj.get_refchain()[0]._name,  True)
-                fd.write("[]{0}".format(n))
+                fd.write("[]*{0}".format(n))
         elif Obj._type == TYPE_INT:
             if objType not in self.defined:
                 objType = "int"
@@ -422,14 +440,23 @@ class GoGenerator(_Generator):
             fd.write("interface{{}} {0}".format(tag))
         elif Obj._type == TYPE_BIT_STR:
             tags = self.getTags(Obj)
+            if "range" in tags:
+                tags["length"] = tags["range"]
+                del tags["range"]
             tags["type"] = "bitstring"
             fd.write("uint64 {0}".format(formatTags(tags)))
         elif Obj._type == TYPE_SEQ_OF:
             tags = self.getTags(Obj)
+            if "range" in tags:
+                tags["length"] = tags["range"]
+                del tags["range"]
             n = name_to_golang(Obj.get_typeref()._name, True)
-            fd.write("[]{0} {2}".format(n,  formatTags(tags),  mod))
+            fd.write("[]*{0} {2}".format(n,  formatTags(tags),  mod))
         elif Obj._type == TYPE_OCT_STR:
             tags = self.getTags(Obj)
+            if "range" in tags:
+                tags["length"] = tags["range"]
+                del tags["range"]
             tags["type"] = "octetstring"
             if "length" not in tags:
                 tags["length"] = "x"
@@ -530,12 +557,13 @@ class GoGenerator(_Generator):
                 childType = "*" + childType
             fd.write("\tItem  []{0}".format(childType))
             tags = self.buildConstraint(Obj)
+            if "range" in tags:
+                tags["length"] = tags["range"]
+                del tags["range"]
             # No constraints on octet string still requires array definition
             if "length" not in tags:  
-                fd.write("`length:\"x\" {0}".format(buildTags(tags)))
-                self.saveFieldType(Obj,  "[]byte")
-            else:
-                fd.write(" {0}".format(formatTags(tags)))
+                tags["length"] = "x"
+            fd.write(" {0}".format(formatTags(tags)))
             fd.write("\n")
             self.gen_const_table(child)
         if ext != "":
@@ -632,6 +660,9 @@ class GoGenerator(_Generator):
                             self.defined[stype.name] = stype
                         elif Obj._type == TYPE_OCT_STR:
                             tags = self.getTags(Obj)
+                            if "range" in tags:
+                                tags["length"] = tags["range"]
+                                del tags["range"]
                             if "length" not in tags:
                                 tags["length"] = "x"
                             str += "type {0} struct {{\n\tValue []byte {1}\n}}\n\n".format(goName,  formatTags(tags))
