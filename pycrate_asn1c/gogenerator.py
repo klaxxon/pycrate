@@ -61,13 +61,6 @@ class _Generator(object):
         self.pgo2go(self.dest )
         
     
-    def wrs(self, structName,  s):
-        s += "\n"
-        if structName not in self.structs:
-            self.structs[structName] = s 
-        else:
-            self.structs[structName] += s
-
     def wrl(self, s):
         self.fd.write('{0}\n'.format(s))
     
@@ -221,6 +214,7 @@ class GoSet():
         self.name = ""
         self.typName = ""
         self.modName = ""
+        self.structName = ""
         self.objNames = []
         
 class GoGenerator(_Generator):
@@ -254,17 +248,6 @@ class GoGenerator(_Generator):
         return "/*\n{0}\n*/\n".format(str)
         
     def gen_const_table(self, Obj):
-        # Is this a table index (@id), save it for later
-        Consts_tab = [C for C in Obj._const if C['type'] == CONST_TABLE]
-        if Consts_tab:
-            if len(Consts_tab) > 1:
-                asnlog('WNG, {0}.{1}: multiple table constraint, but compiling only the first'\
-                       .format(self._mod_name, Obj._name))
-            Const = Consts_tab[0]
-            if Const["at"] is None:
-                name =Obj._typeref.ced_path[-1]
-                tableName = Obj._typeref.called[-1]
-                #self.tableIndexNames[tableName] = name
         # Only interested in top level structs
         if Obj._parent is None:
             if hasattr(Obj._cont,  "__iter__"):
@@ -299,6 +282,12 @@ class GoGenerator(_Generator):
             o.name = Obj._name
             o.typName = Obj.get_typeref()._name
             o.modName = Obj._mod
+            # Find reference that is not the typeref
+            for a in Obj._ref:
+                if isinstance(a,  ASN1RefType):
+                    if a.called[-1] != o.typName:
+                        o.structName = a.called[1] + "." + a.called[0]
+                        break
             if val["root"] is not None:
                 o.objNames += val["root"]
             if val["ext"] is not None:
@@ -351,7 +340,7 @@ class GoGenerator(_Generator):
                 
             if "at" in a:
                 if a["at"] is None:
-                    c["tableIdx"] = "1"
+                    c["itableIdx"] = "1"
 
         # Modifiers?
         if Obj.is_opt():
@@ -369,9 +358,25 @@ class GoGenerator(_Generator):
     
     def getTags(self,  Obj):    
         tags = self.buildConstraint(Obj)
-        tableRef = None
+        tblName = None
         if Obj._parent is not None:
             tblName =  Obj._parent._name + "." + Obj._parent._mod
+        else:
+            # Let's find a ASN1RefSet
+            refName = None
+            for a in Obj._ref:
+                if isinstance(a,  ASN1RefSet):
+                    refName =  a.called[1] + "." + a.called[0]
+                    break
+            # Now get the actual table name from the set
+            if refName is not None:
+                for a in self.sets:
+                    set = self.sets[a]
+                    if isinstance(set,  GoSet):
+                        if set.name + "." + set.modName == refName:
+                            tblName = set.structName
+                            break
+        if tblName is not None:
             if tblName in self.tables:
                 tableRef = self.tables[tblName]
                 if tableRef.itable:
@@ -401,12 +406,11 @@ class GoGenerator(_Generator):
                 fd.write(" {0} {1}".format(type,  formatTags(tags)))
                 return 
         if Obj._type==TYPE_SEQ  or Obj._type == TYPE_CHOICE:
-            #if Obj.get_refchain is not None:
-            #    n = name_to_golang(Obj.get_refchain()[-1]._name,  True)
-            #    fd.write("*{0}".format(n))
-            #else: 
-            #    fd.write("*{0}".format(objType))
-            fd.write("*{0}".format(objType))
+            if Obj.get_refchain is not None:
+                n = name_to_golang(Obj.get_refchain()[-1]._name,  True)
+                fd.write("*{0}".format(n))
+            else: 
+                fd.write("*{0}".format(objType))
         elif Obj._type == TYPE_SEQ_OF:
             if Obj.get_cont() is not None:
                 ref = Obj.get_cont()._typeref.called[-1]
@@ -483,6 +487,7 @@ class GoGenerator(_Generator):
         return    
 
     def writeChoice(self,  fd,  Obj):
+        self.registerStruct(name_to_golang(Obj._name,  True))
         fd.write("type {0} struct {{\n\tAsnCHOICE\n".format(name_to_golang(Obj._name,  True)))
         ext = ""
         if Obj._ext is not None:
@@ -506,6 +511,7 @@ class GoGenerator(_Generator):
         return 
 
     def writeSequence(self,  fd,  Obj):
+        self.registerStruct(name_to_golang(Obj._name,  True))
         fd.write("type {0} struct {{\n\tAsn\n".format(name_to_golang(Obj._name,  True)))
         ext = ""
         if Obj._ext is not None:
@@ -535,6 +541,7 @@ class GoGenerator(_Generator):
         return type
 
     def writeSequenceOf(self,  fd,  Obj):
+        self.registerStruct(name_to_golang(Obj._name,  True))
         fd.write("type {0} struct {{\n\tAsn\n".format(name_to_golang(Obj._name,  True)))
         ext = ""
         if Obj._ext is not None:
@@ -545,7 +552,6 @@ class GoGenerator(_Generator):
         if Obj._cont is not None:
             child = Obj._cont
             #childName = name_to_golang(child._name,  True)
-
             childType = None
             if child._typeref is not None:
                 childType = name_to_golang(child._typeref.called[-1],  True)
@@ -559,7 +565,7 @@ class GoGenerator(_Generator):
             else:
                 childType = "*" + childType
             fd.write("\tItem  []{0}".format(childType))
-            tags = self.buildConstraint(Obj)
+            tags = self.getTags(Obj)
             if "range" in tags:
                 tags["length"] = tags["range"]
                 del tags["range"]
@@ -612,20 +618,17 @@ class GoGenerator(_Generator):
             clean(Obj.get_refchain()), 
             clean(r)
         ))
+        
+    def registerStruct(self,  structName):
+        self.structs[structName] = True
 
     def gen(self):
-        #self.objs = {}
         self.tables = {}
-        #self.fieldTypes = {}
         self.defined = {}  # Types already defined
-        #self.structs = {}
+        self.structs = {}  # For type registration
         self.simpleTypes = {}
         self.sets = {} # List of sets for the given class
-        #self.tableIndexNames = {} # Given the class, this is the index field name
-        #self.classToStructName = {} # For the class name has dict of object name and their type
         self.setToStruct = {} # For the set name, which structs are using it
-        #self.fieldToType = {} # struct.field = fieldtype
-        #self.classes = {} # Class name to object
 
         fd = open(self.dest + "/obj.csv", 'w')
         fd.write("_name\tType\tMode\t_typeref\tget_classref()\t_getparam()\tget_refchain()\t_ref\n")
@@ -642,6 +645,8 @@ class GoGenerator(_Generator):
                     if name in self.sets:
                         panic
                     self.sets[name] = Obj
+                str = self.gen_const_table(Obj)
+
                 if Obj._type == TYPE_INT or Obj._type == TYPE_CLASS:
                     continue
                 self.writeCSV(fd, "",  Obj)
@@ -658,7 +663,6 @@ class GoGenerator(_Generator):
                         continue
                     self.writeCSV(fd, "--->",  c)
                 
-                str = self.gen_const_table(Obj)
         fd.close()
 
         # Don't write, save them since some may need to be removed because they are structs or whatnot
@@ -778,8 +782,6 @@ class GoGenerator(_Generator):
             obj_names = [obj_name for obj_name in Mod.keys() if obj_name[0:1] != '_']
             for obj_name in obj_names:
                 Obj = Mod[obj_name]
-                if Obj._name == "HandoverRequired":
-                    pass
                 if Obj._type == TYPE_CLASS:
                     continue
                 # Search through the objects contents for a field with reference to a set
@@ -867,7 +869,6 @@ class GoGenerator(_Generator):
                             self.tables[o.table] = o
                 else:
                     # In this case we are doing a lookup for each field mapped to a table
-                    '''
                     cont = Obj.get_cont()
                     if not hasattr(cont,  "__iter__"):
                         continue
@@ -881,8 +882,6 @@ class GoGenerator(_Generator):
                                 break
                     if fldType == None:
                         continue
-                    '''
-                    fldType = refObj._name
                     className = "###" + fldType
                     if className not in self.sets:
                         print("Could not find field definition for {0} in self.sets".format(className))
@@ -1002,12 +1001,19 @@ class GoGenerator(_Generator):
             if s in const:
                 del const[s]
             fd.write(self.commentCode(stype))
+            self.registerStruct(s)
             fd.write("type {0} struct {{\n\tValue {1} {2}\n}}\n\n".format(s,  stype.type,  formatTags(stype.tags)))
         fd.close()
 
         fd = open(self.dest + "/types.go", 'w')
         fd.write("package {0}\n\n".format(self.pkg))
+        fd.write("import (\n\t\"asn2gort\"\n\t\"reflect\"\n)\n\n")
         fd.write("// const ASNGORVER string = \"{0}\"\n".format(self.revision))
+        # For preloading
+        fd.write("\nfunc init() {\n")
+        for s in self.structs:
+            fd.write("\tasn2gort.LoadAsnStructures(reflect.TypeOf({0}{{}}))\n".format(s))
+        fd.write("}\n\n")
         # Common types
         fd.write("type OCTET_STRING struct {\n\tValue string `type:\"octetstring\"`\n}\n\n")
         for s in self.simpleTypes:
