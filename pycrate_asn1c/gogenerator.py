@@ -340,13 +340,23 @@ class GoGenerator(_Generator):
                 
             if "at" in a:
                 if a["at"] is None:
-                    c["itableIdx"] = "1"
+                    c["itableIdx"] = "true"
 
         # Modifiers?
         if Obj.is_opt():
             c["mod"] = "optional"
         return c
        
+    def markTypeUsed(self,  name):
+        # If name is in simpleTypes, set flag so it is saved as a struct, not a simple type
+        if name in self.simpleTypes:
+            self.simpleTypes[name].Used = True
+        
+    def markGenStruct(self,  name):
+        # If name is in simpleTypes, set flag so it is saved as a struct, not a simple type
+        if name in self.simpleTypes:
+            self.simpleTypes[name].saveAsStruct = True
+        
     def lookupSimpleDefined(self,  name):
         stype = GoField("")
         if name in self.simpleTypes:
@@ -366,16 +376,16 @@ class GoGenerator(_Generator):
             refName = None
             for a in Obj._ref:
                 if isinstance(a,  ASN1RefSet):
-                    refName =  a.called[1] + "." + a.called[0]
+                    refName =  a.called[0] + "." + a.called[1]
                     break
+            
             # Now get the actual table name from the set
             if refName is not None:
-                for a in self.sets:
-                    set = self.sets[a]
-                    if isinstance(set,  GoSet):
-                        if set.name + "." + set.modName == refName:
-                            tblName = set.structName
-                            break
+                if refName in self.sets:
+                    set = self.sets[refName]
+                    tblName = set.structName
+                else:
+                    print("Cannot locate set for \"{0}\"".format(refName))
         if tblName is not None:
             if tblName in self.tables:
                 tableRef = self.tables[tblName]
@@ -384,8 +394,6 @@ class GoGenerator(_Generator):
                 else:
                     if Obj._name == tableRef.indexFieldName:
                         tags["table"] = tableRef.table
-                    else:
-                        tags["lut"] = "table"
         return tags
     
     def writeType(self,  fd,  Obj,  gft = None):
@@ -403,13 +411,16 @@ class GoGenerator(_Generator):
                 # If this type has been defined already, use the actual type
                 if objName in self.defined:
                     type = objName
+                self.markTypeUsed(type)
                 fd.write(" {0} {1}".format(type,  formatTags(tags)))
                 return 
         if Obj._type==TYPE_SEQ  or Obj._type == TYPE_CHOICE:
             if Obj.get_refchain is not None:
                 n = name_to_golang(Obj.get_refchain()[-1]._name,  True)
+                self.markTypeUsed(n)
                 fd.write("*{0}".format(n))
             else: 
+                self.markTypeUsed(objType)
                 fd.write("*{0}".format(objType))
         elif Obj._type == TYPE_SEQ_OF:
             if Obj.get_cont() is not None:
@@ -422,10 +433,14 @@ class GoGenerator(_Generator):
                 if "range" in tags:
                     tags["length"] = tags["range"]
                     del tags["range"]
+                self.markTypeUsed(n)
+                self.markGenStruct(n)
                 fd.write("[]*{0} {1}".format(n,  formatTags(tags)))
             else:
                 n = name_to_golang(Obj.get_refchain()[0]._name,  True)
+                self.markTypeUsed(n)
                 fd.write("[]*{0}".format(n))
+                self.markGenStruct(n)
         elif Obj._type == TYPE_INT:
             if objType not in self.defined:
                 objType = "int"
@@ -451,7 +466,9 @@ class GoGenerator(_Generator):
                 tags["length"] = tags["range"]
                 del tags["range"]
             n = name_to_golang(Obj.get_typeref()._name, True)
+            self.markTypeUsed(n)
             fd.write("[]*{0} {2}".format(n,  formatTags(tags),  mod))
+            self.markGenStruct(n)
         elif Obj._type == TYPE_OCT_STR:
             tags = self.getTags(Obj)
             if "range" in tags:
@@ -562,7 +579,9 @@ class GoGenerator(_Generator):
             stype = self.lookupSimpleDefined(childType)
             if stype.type != "":
                 childType = stype.type
+                self.markTypeUsed(childType)
             else:
+                self.markTypeUsed(childType)
                 childType = "*" + childType
             fd.write("\tItem  []{0}".format(childType))
             tags = self.getTags(Obj)
@@ -622,6 +641,22 @@ class GoGenerator(_Generator):
     def registerStruct(self,  structName):
         self.structs[structName] = True
 
+    # Does the Obj have a field that references the clsName?
+    def findBaseClassObject(self,  Obj,  clsName):
+        cont = getCList(Obj)
+        for a in cont:
+            b = cont[a]
+            if hasattr(b,  "get_classref"):
+                if b.get_classref() is not None:
+                    if b.get_classref()._name == clsName:
+                        # Child contains class, return parent
+                        return Obj
+            x = self.findBaseClassObject(b,  clsName)
+            if x != None:
+                return x
+        return None
+            
+
     def gen(self):
         self.tables = {}
         self.defined = {}  # Types already defined
@@ -637,7 +672,6 @@ class GoGenerator(_Generator):
             self._mod_name = mod_name
             Mod = GLOBAL.MOD[mod_name]
             obj_names = [obj_name for obj_name in Mod.keys() if obj_name[0:1] != '_']
-            modWritten = False
             for obj_name in obj_names:
                 Obj = Mod[obj_name]
                 if Obj._param is not None and Obj._mode == MODE_TYPE:
@@ -645,18 +679,14 @@ class GoGenerator(_Generator):
                     if name in self.sets:
                         panic
                     self.sets[name] = Obj
+                if Obj._name == "E-RABToBeSetupItemCtxtSUReqIEs":
+                    pass
                 str = self.gen_const_table(Obj)
 
                 if Obj._type == TYPE_INT or Obj._type == TYPE_CLASS:
                     continue
                 self.writeCSV(fd, "",  Obj)
                 const = getCList(Obj)
-                '''
-                if not hasattr(const,  "__iter__"):
-                    a = {}
-                    a[const._name] = const
-                    const = a
-                    '''
                 for a in const:
                     c = const[a]
                     if not hasattr(c, "_name"):
@@ -677,6 +707,8 @@ class GoGenerator(_Generator):
             obj_names = [obj_name for obj_name in Mod.keys() if obj_name[0:1] != '_']
             for obj_name in obj_names:
                 Obj = Mod[obj_name]
+                if Obj._name == "PLMNidentity":
+                    pass
                 goName = name_to_golang(obj_name,  True)
                 if (Obj._type != TYPE_INT and Obj._type != TYPE_OCT_STR  and Obj._type != TYPE_BIT_STR and Obj._type != TYPE_ENUM and Obj._type != TYPE_STR_PRINT) or Obj._mode == MODE_SET:
                     continue
@@ -767,8 +799,16 @@ class GoGenerator(_Generator):
                 if str != "":
                     const[goName] = str
         
-        
-
+        '''
+        Build lookup tables
+        Lookup tables are built for objects that have a refernece to an ASN1RefSet type
+        Each table entry has:
+            TableName   One or more entries to group the IDs.  This is a combination of the module and struct referencing the set
+            IndexID         Combined with TableName for the unique lookup, these are in the SET 
+            Value             Instance of value with default values, if any.
+            
+            For each set, a group of default values are specified.  Some of these may not map to the current reference object.
+        '''
         fd = open(self.dest + "/tables.go", 'w')
         fd.write("package {0}\n\n".format(self.pkg))
         fd.write('import (')
@@ -782,163 +822,124 @@ class GoGenerator(_Generator):
             obj_names = [obj_name for obj_name in Mod.keys() if obj_name[0:1] != '_']
             for obj_name in obj_names:
                 Obj = Mod[obj_name]
-                if Obj._type == TYPE_CLASS:
+                if Obj._type == TYPE_CLASS or Obj._type == TYPE_ENUM:
                     continue
-                # Search through the objects contents for a field with reference to a set
-                refset = None
-                # Return the ref set field names
-                refchild = []
-                if Obj._ref is not None:
-                    for a in Obj._ref:
-                        if isinstance(a,  ASN1RefType):
-                            refObj = GLOBAL.MOD[a.called[0]][a.called[1]]
-                            pass
-                        elif isinstance(a,  ASN1RefSet):
-                            # Found it, return the name of set
-                            refset = a.called[0] + "." + a.called[1]
-                        elif isinstance(a,  ASN1RefClassField):
-                            fldName = a.ced_path[0]
-                            refchild.append(fldName)
-                if refset is None:
-                    continue
-                refClass = False
-                if hasattr(Obj,  "_ref"):
-                    if Obj._ref is not None:
-                        refCnt = 0
-                        for a in Obj._ref:
-                            if isinstance(a,  ASN1RefClassField) or isinstance(a, ASN1RefSet):
-                                refCnt+=1
-                        if refCnt == len(Obj._ref):
-                            refClass = True
-                # We have the object struct and the set it references, now all we do is create a lookup table entry with the default values.
-                # Obj = Who we are adding table lookup
-                # refset = Name of the set we will iterate over to add the specific table lookups and default values
-                rset = self.sets[refset]
-                # rset = Struct holding list of set properties including list of objects with default values
-                if refClass:
-                    for setInst in rset.objNames:
-                        valStruct = ""
-                        instName = ""
-                        # Some of the fields in the lup structure may not apply to the type (refchild) so we ignore them
-                        cont = Obj.get_cont()
-                        if not hasattr(cont,  "__iter__"):
+                # Now we get the required fields
+                validFields = {}
+                openTypeFieldName = None
+                openTypeTypeName = None
+                # Look for reference to ASN1RefSet. Set hasSet to the set name.
+                hasSet = None
+                # Is this a class reference?
+                isClassRef = False
+                for r in Obj._ref:
+                    if isinstance(r,  ASN1RefClassField):
+                        isClassRef = True
+                        break
+                
+                newObj = None
+                if not isClassRef:
+                    cont = getCList(Obj)
+                    for a in cont:
+                        c = cont[a]
+                        if not hasattr(c,  "_ref"):
                             continue
-                        # If this has a subtype, assume we are instance based on table line []ProtocolIEs and not populating a named instance like InitiatingMessage.
-                        #if fld.get_cont() is not None:
-                        #    instName = fld.get_cont()._typeref.called[-1]
-                        id = None
-                        instName = None
-                        ifFieldName = None
-                        for a in cont:
-                            fld = cont[a]
-                            fldName = name_to_golang(fld._name,  True)
-                            refname = fld.get_refchain()[-1]._name
-                            # Special case for value in open types: If the refname is in the setInst, then use it as a value
-                            if refname in setInst:
-                                instName = refname
-                                # If this is referencing another type, use it
-                                valRef = setInst[refname]._typeref
-                                iName = valRef.called[-1]
-                                valStruct += "{0}:{1}{{}},".format(fldName,  name_to_golang(iName, True))
-                                # If valRef is in simpleTypes, set flag so it is saved as a struct, not a simple type
-                                if valRef in self.simpleTypes:
-                                    self.simpleTypes[valRef].saveAsStruct = True
-                                continue
-                            if fld._name not in setInst:
-                                continue
-                            val = setInst[fld._name]
-                            # Table ID?
-                            if fld._const[0]["at"] is None:
-                                id = val
-                                idFieldName = a
-                            # If the type is ENUM, we need to add the name to the beginning
-                            if fld._type == TYPE_ENUM:
-                                ename = fld.get_refchain()[0]._typeref.called[-1]
-                                val = ename + "_" + name_to_golang(val,  True)
-                            valStruct += "{0}:{1},".format(fldName,  val)
-                            #print("Field name {0} = {1}, {2}".format(fld._name,  refname,  defStruct))
-                        # If instName is None, there is no mapping to this enty
-                        if instName is not None:
-                            valStruct = "{0}{{{1}}}".format(instName,  valStruct[:-1])
-                            tblName = instName + "." + rset.modName
-                            fd.write("AddTableRef(\"{0}\",{1},{2})\n".format(tblName,  id,  valStruct))
-                            o = GoTable()
-                            o.table = tblName
-                            o.itable = False
-                            o.indexFieldName = idFieldName
-                            self.tables[o.table] = o
-                else:
-                    # In this case we are doing a lookup for each field mapped to a table
-                    cont = Obj.get_cont()
-                    if not hasattr(cont,  "__iter__"):
-                        continue
-                    for fname in cont:
-                        fldType = None
-                        fld = cont[fname]
-                        c = fld.get_cont()
-                        if c is not None:
-                            if hasattr(c,  "_typeref"):
-                                fldType = c._typeref.called[-1]
+                        for r in c._ref:
+                            if isinstance(r,  ASN1RefSet):
+                                hasSet = r.called
                                 break
-                    if fldType == None:
+                        if hasSet is not None:
+                            n = None
+                            # New obj to parse is the reftype
+                            if isinstance(c.get_cont(),  ASN1Dict):
+                                for b in c._ref:
+                                    if isinstance(b,  ASN1RefType):
+                                        n = b.called
+                                        break
+                            else:
+                                n = c.get_cont()._typeref.called
+                            newObj = GLOBAL.MOD[n[0]][n[1]]
+                            break
+                        
+                if newObj is None:       
+                    cont = getCList(Obj)
+                else:
+                    cont = getCList(newObj)                    
+                for a in cont:
+                    c = cont[a]
+                    # c must be the base class of fields
+                    if not hasattr(c,  "_ref"):
                         continue
-                    className = "###" + fldType
-                    if className not in self.sets:
-                        print("Could not find field definition for {0} in self.sets".format(className))
-                        continue
-                    classCont = self.sets[className]
-                    for setInst in rset.objNames:
-                        valStruct = ""
-                        instName = ""
-                        # Some of the fields in the lup structure may not apply to the type (refchild) so we ignore them
-                        cont = classCont.get_cont()
-                        if not hasattr(cont,  "__iter__"):
+                    for b in c._ref:
+                        if isinstance(b,  ASN1RefSet):
+                            hasSet = b.called
+                    # If the field has an "at" is using another field for indexing into the table
+                    constraint = c.get_const()
+                    if len(constraint) > 0:
+                        at = findInList(constraint,  "at")
+                        if at == None:
+                            validFields[c._name] = True
+                        else:
+                            validFields[c._name] = False
+                    else:
+                        validFields[c._name] = False
+                    if c._type == TYPE_OPEN:
+                        openTypeFieldName = c._name
+                        openTypeTypeName = c.get_refchain()[0]._name
+                        
+                if hasSet is None:
+                    continue
+                setName = hasSet[1]  + "." + hasSet[0]
+                print("Obj:{0}, openField:{1}, openType:{2}".format(Obj._name, openTypeFieldName,  openTypeTypeName))
+                # Get the reference object
+                setObj = GLOBAL.MOD[hasSet[0]][hasSet[1]].get_val()
+                # Run through each entry in the set
+                for a in setObj["root"]:
+                    instName = ""
+                    openTypeSet  = False
+                    idFieldName = None
+                    struct = ""
+                    for b in a:
+                        bb = a[b]
+                        if b == openTypeTypeName:
+                            # Extract the type
+                            if bb._typeref is not None:
+                                instName = name_to_golang(bb._typeref.called[-1],  True)
+                            else:
+                                instName = name_to_golang(bb._type,  True)
+                            openTypeSet = True
+                        if b not in validFields:
                             continue
-                        # If this has a subtype, assume we are instance based on table line []ProtocolIEs and not populating a named instance like InitiatingMessage.
-                        #if fld.get_cont() is not None:
-                        #    instName = fld.get_cont()._typeref.called[-1]
-                        id = None
-                        instName = None
-                        idFieldName = None
-                        for a in cont:
-                            fld = cont[a]
-                            fldName = name_to_golang(fld._name,  True)
-                            refname = fld.get_refchain()[-1]._name
-                            # Special case for value in open types: If the refname is in the setInst, then use it as a value
-                            if refname in setInst:
-                                instName = refname
-                                # If this is referencing another type, use it
-                                if setInst[refname]._typeref is None:
-                                    valRef = name_to_golang(setInst[refname]._type,  True)
-                                    valStruct += "{0}:{1}{{}},".format(fldName,  valRef)
-                                else:
-                                    valRef = name_to_golang(setInst[refname]._typeref.called[-1],  True)
-                                    valStruct += "{0}:{1}{{}},".format(fldName,  valRef)
-                                    # If valRef is in simpleTypes, set flag so it is saved as a struct, not a simple type
-                                    if valRef in self.simpleTypes:
-                                        self.simpleTypes[valRef].saveAsStruct = True
-                                continue
-                            if fld._name not in setInst:
-                                continue
-                            val = setInst[fld._name]
-                            # Table ID?
-                            if fld._const[0]["at"] is None:
-                                id = val
-                                idFieldName = a
-                            # If the type is ENUM, we need to add the name to the beginning
-                            if fld._type == TYPE_ENUM:
-                                ename = fld.get_refchain()[0]._typeref.called[-1]
-                                val = ename + "_" + name_to_golang(val,  True)
-                            valStruct += "{0}:{1},".format(fldName,  val)
-                            #print("Field name {0} = {1}, {2}".format(fld._name,  refname,  defStruct))
-                        if instName is not None:
-                            valStruct = "{0}{{{1}}}".format(name_to_golang(fldType,  True),  valStruct[:-1])
-                            fd.write("AddTableRef(\"{0}.{1}\", {2}, {3})\n".format(obj_name,  Obj._mod,  id, valStruct))
-                            o = GoTable()
-                            o.table = obj_name + "." + Obj._mod
-                            o.itable = True
-                            o.indexFieldName = idFieldName
-                            self.tables[o.table] = o
+                        if validFields[b]:
+                            tblID = bb
+                            idFieldName = b
+                        if len(struct) > 0:
+                            struct += " ,"
+                        if newObj is not None:
+                             if newObj._cont[b]._type == TYPE_ENUM:
+                                bb = "{0}_{1}".format(name_to_golang(b,  True),  name_to_golang(bb,  True))
+                        elif Obj._cont[b]._type == TYPE_ENUM:
+                            bb = "{0}_{1}".format(name_to_golang(b,  True),  name_to_golang(bb,  True))
+                        struct += "{0}:{1}".format(name_to_golang(b, True),  bb)
+                    if not openTypeSet:
+                        continue
+                    if isClassRef:
+                        struct = "{0}{{{1}, {2}:{3}{{}}}}".format(openTypeTypeName,  struct, name_to_golang(openTypeFieldName,  True), instName)
+                        tableName = openTypeTypeName + "." + mod_name
+                        self.markGenStruct(name_to_golang(openTypeFieldName,  True))
+                    else:
+                        struct = "{0}{{{1}, {2}:{3}{{}}}}".format(name_to_golang(newObj._name,  True),  struct,  name_to_golang(openTypeFieldName,  True),  name_to_golang(instName,  True))
+                        tableName = obj_name + "." + mod_name
+                        self.markGenStruct(instName)
+                    #print("{0} {1},{2} has set {3}".format(tableName, openTypeFieldName,  openTypeTypeName,  struct))
+                    if Obj._name == "UplinkNASTransport":
+                        pass
+                    fd.write("AddTableRef(\"{0}\", {1}, {2})\n".format(tableName,  tblID,  struct))
+                    o = GoTable()
+                    o.table = tableName
+                    o.itable = not isClassRef
+                    o.indexFieldName = idFieldName
+                    self.tables[o.table] = o
         fd.write('}\n')        
         fd.close()
                 
@@ -960,6 +961,8 @@ class GoGenerator(_Generator):
             fd.write("********************************/\n")
             for obj_name in obj_names:
                 Obj = Mod[obj_name]
+                if Obj._name == "E-RABToBeSetupListCtxtSUReq":
+                    pass
                 goName = name_to_golang(obj_name,  True)
                 # If this is already defined as a simple type, skip
                 if goName in self.simpleTypes:
@@ -990,7 +993,6 @@ class GoGenerator(_Generator):
                     else:
                         fd.write("type! {0} struct {{\n\tAsn\n".format(goName))
                         fd.write("\tValue  ")
-                        tableRef = self.writeType(fd,  Obj)
                         fd.write("\n}\n")
 
         # Simple type with constraint are not simple type because they require tags
@@ -999,6 +1001,7 @@ class GoGenerator(_Generator):
             if not stype.saveAsStruct:
                 continue
             if s in const:
+                print("Deleting const {0}".format(s))
                 del const[s]
             fd.write(self.commentCode(stype))
             self.registerStruct(s)
@@ -1029,7 +1032,18 @@ class GoGenerator(_Generator):
 
         fd = open(self.dest + "/consts.go", 'w')
         fd.write("package {0}\n\n".format(self.pkg))
+        fd.write("import (\n\t\"asn2gort\"\n\t\"reflect\"\n)\n\n")
         fd.write("const ASNGORVER string = \"{0}\"\n".format(self.revision))
+        # For preloading
+        fd.write("\nfunc init() {\n")
+        for c in const:
+            s = const[c]
+            p = s.find(" struct")
+            if p != -1:
+                sName = s[5:p]
+                print(sName)
+                fd.write("\tasn2gort.LoadAsnStructures(reflect.TypeOf({0}{{}}))\n".format(sName))
+        fd.write("}\n\n")
         for c in const:
             fd.write(const[c] + "\n")
         fd.close()
