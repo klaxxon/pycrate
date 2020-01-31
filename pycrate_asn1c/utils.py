@@ -870,6 +870,8 @@ def formatTags(tags):
 
 # Return contents list and puts single items into a list of one
 def getCList(Obj):
+    if not hasattr(Obj,  "get_cont"):
+        return {}
     cont = Obj.get_cont()
     if cont is None:
         return {}
@@ -878,3 +880,19 @@ def getCList(Obj):
         l[cont._name]= cont
         return l
     return cont
+
+# Return contents inside of parens, if any
+def getParenContent(s):
+    p = s.index("(")
+    if p == -1:
+        return None
+    s = s[p+1:]
+    p = s.index(")")
+    return s[:p]
+    
+def findInList(list,  name):
+    for a in list:
+        if name in a:
+            return a[name]
+    return None
+
