@@ -1,17 +1,57 @@
-Adding GoGenerate to generate Go code. Work in progress.....
+Adding GoGenerate to generate tagged Go structs. Work in progress.....
+Takes ASN.1 files for imput and creates a set of go files contained tagged structs for reflection based encoding/decoding.
 
 ```
-package main
+/* ProtocolIE-FieldPair, Mode TYPE, TYPE SEQUENCE, Param   */
+/*
+SEQUENCE {
+ id S1AP-PROTOCOL-IES-PAIR.&id ({IEsSetParam}),
+ firstCriticality S1AP-PROTOCOL-IES-PAIR.&firstCriticality ({IEsSetParam}{@id}),
+ firstValue S1AP-PROTOCOL-IES-PAIR.&FirstValue ({IEsSetParam}{@id}),
+ secondCriticality S1AP-PROTOCOL-IES-PAIR.&secondCriticality ({IEsSetParam}{@id}),
+ secondValue S1AP-PROTOCOL-IES-PAIR.&SecondValue ({IEsSetParam}{@id}) 
+}
+*/
+type ProtocolIE_FieldPair struct {
+	Asn
+	Id  int `tableIdx:"true" range:"0..65535"`
+	FirstCriticality  Criticality `type:"enum(Reject, Ignore, Notify)"`
+	FirstValue  interface{} 
+	SecondCriticality  Criticality `type:"enum(Reject, Ignore, Notify)"`
+	SecondValue  interface{} 
+}
 
-import (
-	"asn2gort"
-	pdu "s1ap"
-)
 
-func main() {
-	per := asn2gort.NewPERDecoderFromString("0011003F000004003B00080000F11000070800003C400A0380617269632D654E42004000190300030000F1100002C000F11000028000F11000024000F1100089000100", false)
-	x := &S1ap_Pdu{}
-	per.Unmarshal(x)
+/* S1AP-PDU, Mode TYPE, TYPE CHOICE, Param   */
+/*
+CHOICE {
+ initiatingMessage InitiatingMessage,
+ successfulOutcome SuccessfulOutcome,
+ unsuccessfulOutcome UnsuccessfulOutcome,
+ ... 
+}
+*/
+type S1AP_PDU struct {
+	AsnCHOICE
+	InitiatingMessage  *InitiatingMessage 
+	SuccessfulOutcome  *SuccessfulOutcome 
+	UnsuccessfulOutcome  *UnsuccessfulOutcome 
+	AsnEXTENSION
+}
+
+/* InitiatingMessage, Mode TYPE, TYPE SEQUENCE, Param   */
+/*
+SEQUENCE {
+ procedureCode S1AP-ELEMENTARY-PROCEDURE.&procedureCode ({S1AP-ELEMENTARY-PROCEDURES}),
+ criticality S1AP-ELEMENTARY-PROCEDURE.&criticality ({S1AP-ELEMENTARY-PROCEDURES}{@procedureCode}),
+ value S1AP-ELEMENTARY-PROCEDURE.&InitiatingMessage ({S1AP-ELEMENTARY-PROCEDURES}{@procedureCode}) 
+}
+*/
+type InitiatingMessage struct {
+	Asn
+	ProcedureCode   ProcedureCode `tableIdx:"true" range:"0..255" table:"InitiatingMessage/S1AP-ELEMENTARY-PROCEDURES.S1AP-PDU-Descriptions"`
+	Criticality   Criticality `table:"InitiatingMessage/S1AP-ELEMENTARY-PROCEDURES.S1AP-PDU-Descriptions" type:"enum(Reject, Ignore, Notify)"`
+	Value  interface{} `table:"InitiatingMessage/S1AP-ELEMENTARY-PROCEDURES.S1AP-PDU-Descriptions"`
 }
 ```
 
