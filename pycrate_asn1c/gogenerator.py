@@ -467,8 +467,7 @@ class GoGenerator(_Generator):
             if "range" in tags:
                 tags["length"] = tags["range"]
                 del tags["range"]
-            tags["type"] = "bitstring"
-            fd.write("[]byte {0}".format(formatTags(tags)))
+            fd.write("*AsnBITSTRING {0}".format(formatTags(tags)))
         elif Obj._type == TYPE_SEQ_OF:
             tags = self.getTags(Obj)
             if "range" in tags:
@@ -756,8 +755,7 @@ class GoGenerator(_Generator):
                             if "range" in stype.tags:
                                 stype.tags["length"] = stype.tags["range"]
                                 del stype.tags["range"]
-                            stype.tags["type"] = "bitstring" 
-                            stype.type = "[]byte"
+                            stype.type = "*AsnBITSTRING"
                             self.setSimpleType(stype)
                         elif Obj._type == TYPE_STR_PRINT:
                             stype = GoField(Obj._text_def)
